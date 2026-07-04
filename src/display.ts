@@ -171,7 +171,6 @@ function createWebDisplay() {
         }),
 
         onBeforeToolCall(toolCall: any): any {
-          process.stderr.write(`[DEBUG NanoPlugin] onBeforeToolCall id=${toolCall.id} fn=${toolCall.function?.name}\n`);
           currentToolName = toolCall.function?.name || 'unknown';
           currentToolId = toolCall.id;
 
@@ -183,7 +182,6 @@ function createWebDisplay() {
         },
 
         onAfterToolCall(result: any): any {
-          process.stderr.write(`[DEBUG NanoPlugin] onAfterToolCall id=${currentToolId} status=${result.status}\n`);
           if (currentToolId) {
             toolCallBc.broadcastResult(server, currentToolId, currentToolName, result.status, result.message, agentName);
             currentToolId = null;
@@ -320,23 +318,15 @@ function createWebDisplay() {
 
     onToolCall(event: any): void {
       const id = event.id || event.toolCallId;
-      if (!id) {
-        process.stderr.write(`[DEBUG] onToolCall: no id, keys=${Object.keys(event)}\n`);
-        return;
-      }
+      if (!id) return;
       currentToolId = id;
       currentToolName = event.toolName || event.name || event.function?.name || 'unknown';
-      process.stderr.write(`[DEBUG] onToolCall: id=${id} toolName=${currentToolName} hasArgs=${!!(event.args || event.input)}\n`);
       toolCallBc.broadcastCall(server, id, currentToolName, event.args || event.input || {}, agentName);
     },
 
     onToolResult(event: any): void {
       const id = event.id || event.toolCallId;
-      if (!id) {
-        process.stderr.write(`[DEBUG] onToolResult: no id, keys=${Object.keys(event)}\n`);
-        return;
-      }
-      process.stderr.write(`[DEBUG] onToolResult: id=${id} status=${event.status}\n`);
+      if (!id) return;
       toolCallBc.broadcastResult(server, id, event.toolName || event.name, event.status, event.message || event.error, agentName);
       // 不重置 currentToolId/currentToolName — NanoPlugin 的 onAfterToolCall 可能依赖它们
     },

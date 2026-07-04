@@ -99,6 +99,7 @@ export class NanoCodeWebServer {
         if (req.method === 'POST' && sUrl.pathname === '/confirm') return this.handleConfirm(req, res);
         if (req.method === 'GET' && sUrl.pathname === '/health') return this.handleHealth(res);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/web-files/')) return this.handleFile(req, res, sUrl.pathname);
+        if (req.method === 'GET' && sUrl.pathname.startsWith('/vendor/')) return this.handleVendor(res, sUrl.pathname);
         return this.handleIndex(res);
       } catch {
         res.writeHead(500);
@@ -204,6 +205,37 @@ export class NanoCodeWebServer {
       'Cache-Control': 'public, max-age=300',
     });
     stream.pipe(res);
+  }
+
+  private handleVendor(res: http.ServerResponse, pathname: string): void {
+    const fileName = pathname.slice('/vendor/'.length);
+    if (fileName.includes('..') || fileName.includes('/')) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    const scriptDir = new URL('.', import.meta.url).pathname;
+    const candidates = [
+      path.join(scriptDir, 'vendor', fileName),
+      path.join(scriptDir, '..', 'dist', 'vendor', fileName),
+    ];
+    let content: Buffer | null = null;
+    for (const p of candidates) {
+      try { content = fs.readFileSync(p); break; } catch { /* try next */ }
+    }
+    if (!content) {
+      res.writeHead(404);
+      res.end('Not Found');
+      return;
+    }
+    const ext = path.extname(fileName);
+    const mime: Record<string, string> = { '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=3600',
+    });
+    res.end(content);
   }
 
   private handleIndex(res: http.ServerResponse): void {
