@@ -1,0 +1,21 @@
+{
+  "name": "@preprocess-cn/nano-code-web",
+  "version": "0.1.0",
+  "description": "Web-based display plugin for nano-code",
+  "type": "module",
+  "main": "dist/display.js",
+  "scripts": {
+    "build": "tsc && cp public/index.html dist/index.html",
+    "dev": "tsc --watch",
+    "test": "tsx --test --test-force-exit tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "playwright": "^1.61.1",
+    "tsx": "^4.22.5",
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

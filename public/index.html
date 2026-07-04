@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nano-code</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1a1b1e; --surface: #25262b; --border: #373a40;
+    --text: #c1c2c5; --text-dim: #909296; --text-muted: #5c5f66;
+    --accent: #4c9aff; --accent-bg: rgba(76,154,255,0.08);
+    --success: #51cf66; --error: #ff6b6b; --warning: #fcc419;
+  }
+  body { font: 14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.connected { background: var(--success); }
+  .dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+  .dot.disconnected { background: var(--error); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #status-text { color: var(--text-dim); font-size: 12px; flex: 1; }
+  #cancel-btn { padding: 4px 14px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-dim); cursor: pointer; display: none; }
+  #cancel-btn:hover { background: rgba(255,107,107,0.1); border-color: var(--error); color: var(--error); }
+
+  /* ── Welcome placeholder ── */
+  #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--text-muted); user-select: none; }
+  #welcome.hidden { display: none; }
+  #welcome .logo { font-size: 32px; font-weight: 700; color: var(--text); letter-spacing: -1px; opacity: 0.15; }
+  #welcome .hint { font-size: 13px; text-align: center; line-height: 1.8; }
+
+  /* ── Messages ── */
+  #messages { flex: 1; overflow-y: auto; padding: 20px; display: none; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+  #messages.show { display: flex; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 8px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent-bg); border: 1px solid rgba(76,154,255,0.15); }
+  .msg.assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); }
+  .msg.system { align-self: center; color: var(--text-dim); font-size: 13px; background: transparent; border: none; padding: 6px; text-align: center; }
+  .msg.error { align-self: flex-start; background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.2); color: var(--error); }
+
+  /* ── Tool call cards ── */
+  .tool-card { align-self: flex-start; width: 100%; max-width: 640px; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--surface); overflow: hidden; flex-shrink: 0; }
+  .tool-card.success { border-left-color: var(--success); }
+  .tool-card.error { border-left-color: var(--error); }
+  .tool-card.rejected { border-left-color: var(--warning); }
+  .tool-card-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 13px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); }
+  .tool-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+  .tool-card.success .tool-spinner { border-color: var(--success); animation: none; }
+  .tool-card.success .tool-spinner::after { content: "✓"; display: block; font-size: 11px; line-height: 13px; text-align: center; color: var(--success); }
+  .tool-card.error .tool-spinner { border-color: var(--error); animation: none; }
+  .tool-card.error .tool-spinner::after { content: "✕"; display: block; font-size: 11px; line-height: 13px; text-align: center; color: var(--error); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tool-name { font-weight: 600; flex: 1; }
+  .tool-status { font-size: 12px; color: var(--text-dim); }
+  .tool-args { padding: 8px 12px; font-size: 12px; color: var(--text-dim); font-family: ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto; }
+
+  /* ── Thinking indicator ── */
+  #thinking { display: none; align-items: center; gap: 8px; padding: 8px 12px; color: var(--text-dim); font-size: 13px; align-self: flex-start; margin-left: 20px; }
+  #thinking.show { display: flex; }
+  #thinking .label { color: var(--text-muted); }
+  .think-dots { display: flex; gap: 4px; }
+  .think-dots span { width: 5px; height: 5px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.4s infinite both; }
+  .think-dots span:nth-child(2) { animation-delay: 0.16s; }
+  .think-dots span:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+
+  /* ── Agent turn badge ── */
+  .agent-badge { align-self: center; padding: 2px 10px; border-radius: 10px; font-size: 11px; background: var(--accent-bg); border: 1px solid rgba(76,154,255,0.2); color: var(--accent); }
+
+  /* ── Input area ── */
+  #input-area { display: flex; gap: 8px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+  #input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit; resize: none; outline: none; max-height: 120px; }
+  #input::placeholder { color: var(--text-muted); }
+  #input:focus { border-color: var(--accent); }
+  #input:disabled { opacity: 0.35; }
+  #send-btn { padding: 10px 20px; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; cursor: pointer; font-weight: 500; }
+  #send-btn:disabled { opacity: 0.35; cursor: default; }
+  #send-btn:hover:not(:disabled) { filter: brightness(1.08); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>nano-code</h1>
+  <span class="dot connecting" id="status-dot"></span>
+  <span id="status-text">Connecting...</span>
+  <button id="cancel-btn" onclick="sendCancel()">Cancel</button>
+</header>
+
+<div id="welcome">
+  <div class="logo">nano-code</div>
+  <div class="hint">Connected &middot; waiting for input<br>Type a message to start</div>
+</div>
+
+<div id="messages"></div>
+<div id="thinking"><span class="label">Thinking</span><div class="think-dots"><span></span><span></span><span></span></div></div>
+
+<div id="input-area">
+  <textarea id="input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" disabled></textarea>
+  <button id="send-btn" disabled onclick="sendInput()">Send</button>
+</div>
+
+<script>
+// ── State ──
+const state = { currentMsg: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false };
+
+const $ = id => document.getElementById(id);
+const msgArea = $('messages');
+const welcomeEl = $('welcome');
+const inputEl = $('input');
+const sendBtn = $('send-btn');
+const cancelBtn = $('cancel-btn');
+const statusDot = $('status-dot');
+const statusText = $('status-text');
+const thinkingEl = $('thinking');
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function scrollBottom() { msgArea.scrollTop = msgArea.scrollHeight; }
+
+function addMsg(className, html) {
+  welcomeEl.classList.add('hidden');
+  msgArea.classList.add('show');
+  const el = document.createElement('div');
+  el.className = 'msg ' + className;
+  el.innerHTML = html;
+  msgArea.appendChild(el);
+  scrollBottom();
+  return el;
+}
+
+function setStatus(stateClass, text) {
+  statusDot.className = 'dot ' + stateClass;
+  statusText.textContent = text;
+}
+
+function setInputEnabled(en) {
+  inputEl.disabled = !en;
+  sendBtn.disabled = !en;
+  if (en) setTimeout(() => inputEl.focus(), 100);
+}
+
+function showThinking(show) { thinkingEl.classList.toggle('show', show); }
+
+let isProcessing = false;
+function setProcessing(p) {
+  isProcessing = p;
+  cancelBtn.style.display = p ? 'block' : 'none';
+}
+
+// ── SSE connection ──
+function connect() {
+  if (state.es) state.es.close();
+  const es = new EventSource('/events');
+  state.es = es;
+
+  es.addEventListener('session:start', (e) => {
+    const d = JSON.parse(e.data);
+    msgArea.innerHTML = '';
+    msgArea.classList.remove('show');
+    welcomeEl.classList.remove('hidden');
+    state.currentMsg = null;
+    state.toolCards.clear();
+    state.showThink = d.showThink === true;
+    state.debug = d.debug === true;
+    setStatus('connected', 'Ready');
+    setInputEnabled(true);
+  });
+
+  es.addEventListener('session:ready', () => {
+    setInputEnabled(true);
+    setProcessing(false);
+    showThinking(false);
+    state.currentMsg = null;
+  });
+
+  es.addEventListener('session:stop', (e) => {
+    const d = JSON.parse(e.data);
+    addMsg('system', d.message || 'Session ended');
+    setInputEnabled(false);
+    setProcessing(false);
+    showThinking(false);
+    setStatus('disconnected', 'Ended');
+    es.close();
+  });
+
+  es.addEventListener('stream:chunk', (e) => {
+    const d = JSON.parse(e.data);
+    if (!state.currentMsg) {
+      if (!d.text.trim()) return;
+      state.currentMsg = addMsg('assistant', '');
+    }
+    state.currentMsg.textContent += d.text;
+    scrollBottom();
+  });
+
+  es.addEventListener('tool:call', (e) => {
+    const d = JSON.parse(e.data);
+    state.currentMsg = null;
+    welcomeEl.classList.add('hidden');
+    msgArea.classList.add('show');
+    const card = document.createElement('div');
+    card.className = 'tool-card running';
+    card.dataset.toolId = d.id;
+    const argsStr = d.args && Object.keys(d.args).length > 0 ? JSON.stringify(d.args, null, 2) : '';
+    card.innerHTML = `
+      <div class="tool-card-header"><div class="tool-spinner"></div><span class="tool-name">${escapeHtml(d.toolName)}</span><span class="tool-status">running</span></div>
+      ${argsStr ? `<div class="tool-args">${escapeHtml(argsStr)}</div>` : ''}`;
+    msgArea.appendChild(card);
+    state.toolCards.set(d.id, card);
+    scrollBottom();
+  });
+
+  es.addEventListener('tool:result', (e) => {
+    const d = JSON.parse(e.data);
+    const card = state.toolCards.get(d.id);
+    if (!card) return;
+    card.classList.remove('running');
+    card.classList.add(d.status === 'success' ? 'success' : d.status === 'error' ? 'error' : 'rejected');
+    card.querySelector('.tool-status').textContent = d.status === 'success' ? 'ok' : d.status === 'error' ? (d.message || 'failed') : 'rejected';
+  });
+
+  es.addEventListener('status', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.level === 'status' && d.message === 'thinking') { if (state.showThink) showThinking(true); setProcessing(true); }
+    else if (d.level === 'status' && d.message === 'end') { showThinking(false); setProcessing(false); state.currentMsg = null; }
+    else if (d.level === 'info' || d.level === 'warn') addMsg('system', d.message);
+  });
+
+  es.addEventListener('error', (e) => {
+    const d = JSON.parse(e.data);
+    addMsg('error', 'Error: ' + escapeHtml(d.message));
+  });
+
+  es.addEventListener('debug', (e) => {
+    if (!state.debug) return;
+    const d = JSON.parse(e.data);
+    const data = typeof d.data === 'string' ? d.data : JSON.stringify(d.data, null, 2);
+    const tag = d.agentName && d.agentName !== 'main' ? `[${escapeHtml(d.agentName)}] ` : '';
+    addMsg('system', '[debug] ' + tag + escapeHtml(data));
+  });
+
+  es.addEventListener('agent:turn_start', (e) => {
+    const d = JSON.parse(e.data);
+    if (d.agentName !== 'main') addMsg('agent-badge', '&#9881; Agent: ' + escapeHtml(d.agentName));
+  });
+
+  es.addEventListener('agent:turn_end', () => { state.currentMsg = null; });
+
+  es.onerror = () => { setStatus('disconnected', 'Reconnecting...'); state.connected = false; setInputEnabled(false); };
+  es.onopen = () => { setStatus('connected', 'Connected'); state.connected = true; };
+}
+
+async function sendInput() {
+  const text = inputEl.value;
+  if (!text.trim()) return;
+  inputEl.value = '';
+  setInputEnabled(false);
+  addMsg('user', escapeHtml(text));
+  state.currentMsg = null;
+  try {
+    const r = await fetch('/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text.trim() }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (err) { addMsg('error', 'Failed to send: ' + err.message); setInputEnabled(true); }
+}
+
+async function sendCancel() { try { await fetch('/cancel', { method: 'POST', body: '{}' }); } catch {} }
+
+inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(); } });
+connect();
+</script>
+</body>
+</html>

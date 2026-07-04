@@ -1,0 +1,78 @@
+# ROADMAP
+
+## v0.1.0 — 当前版本
+
+### 已完成
+
+- **基础架构**
+  - `NanoCodeWebServer` HTTP/SSE 服务器
+  - DisplayPlugin 事件 → SSE 广播
+  - 单页前端，EventSource 接收实时事件
+
+- **核心功能**
+  - 消息气泡渲染（用户/助手/系统/错误/agent 标记）
+  - 流式文本输出（`stream:chunk`，`white-space: pre-wrap` 排版）
+  - 工具调用卡片（`tool:call` / `tool:result`，含 spinner、工具名、参数、状态）
+  - 思考过程动画（`status: thinking` / `status: end`）
+  - Agent 回合切换标记
+  - 取消操作（`POST /cancel`）
+  - Web 临时文件服务（`GET /web-files/*`）
+  - `debug` 模式显示调试事件
+
+- **ThinkFilter**
+  - `<think>...</think>` 内容过滤，按 `showThink` 配置开关
+  - 支持跨 chunk 分割（包括标签中间切割、`<thi` → `nk>` 拼接）
+  - 剥离上游残留的 `</think>` 闭标签
+
+- **ToolCallBroadcaster**
+  - 双向路径去重（NanoPlugin + DisplayPlugin 共享实例）
+  - SSE 级别广播保护（result 无对应 call 时不广播）
+
+- **CSS/渲染可靠性**
+  - `flex-shrink: 0` 防止工具卡片在滚动后被 flex 压缩
+  - `stream:chunk` 纯空白块不创建气泡（避免空白气泡干扰）
+  - `tool:call` 处理器主动确保 `#messages` 容器可见
+
+- **开发基础设施**
+  - TypeScript + NodeNext 模块系统
+  - `node:test` 单元测试
+  - Playwright 前端集成测试
+  - 共 44 测试用例（11 ThinkFilter + 7 ToolCallBroadcaster + 17 Server + 8 前端渲染 + 1 滚动高度）
+
+### 已修复 Bug
+
+- ~~工具调用气泡显示异常~~ — 2026-07-04 修复
+  - 根因：`.tool-card` 的 `overflow: hidden` 导致 flex `min-height: auto` 失效，滚动后卡片被压缩到 2px
+  - 修复：添加 `flex-shrink: 0`
+- ~~`</think>` 残留显示~~ — 2026-07-04 修复
+  - 根因：nano-code 内核处理 `<think>` 后残留 `</think>`，ThinkFilter 在非 think 模式下未处理
+  - 修复：过滤结果中用 `replace(/<\/think>/g, '')` 清理
+- ~~空白气泡出现在工具卡片位置~~ — 2026-07-04 修复
+  - 根因：`stream:chunk` 的纯 `"\n"` 块在 `tool:call` 后创建了空白助手气泡
+  - 修复：前端 `stream:chunk` 处理纯空白文本时不创建新气泡
+
+## 待办
+
+### 短期（v0.1.x）
+
+- [ ] 真实环境调试面板：前端显示原始 SSE 事件
+- [ ] 在 `nano-code` 新进程启动时自动打开浏览器
+- [ ] 前端暗色/亮色主题切换
+- [ ] 代码块等宽字体渲染（检测 `├──`、`│` 等树形字符自动切换 monospace）
+
+### 中期（v0.2.0）
+
+- [ ] **多轮对话历史** — 保存并显示历史会话
+- [ ] **消息复制按钮** — 鼠标悬停时显示复制图标
+- [ ] **代码块语法高亮**
+- [ ] **Markdown 渲染** — LLM 输出的 Markdown 格式渲染
+- [ ] **图片/附件上传** — 通过 POST 支持文件上传
+- [ ] **响应式布局** — 移动端支持
+
+### 长期（v0.3.0+）
+
+- [ ] **多 Session 管理** — 标签页切换多个对话
+- [ ] **对话导出** — Markdown / JSON 导出
+- [ ] **自定义 CSS 主题**
+- [ ] **WebSocket 替代 SSE** — 双向通信支持更丰富的交互
+- [ ] **贡献指南**（CONTRIBUTING.md）
