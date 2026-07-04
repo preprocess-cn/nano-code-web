@@ -6,6 +6,7 @@ import * as crypto from 'node:crypto';
 
 export type InputCallback = (text: string) => void;
 export type CancelCallback = () => void;
+export type ConfirmCallback = (id: string, approved: boolean) => void;
 export type ConnectCallback = (client: SSEClient) => void;
 
 export interface SSEClient {
@@ -22,6 +23,7 @@ export class NanoCodeWebServer {
   private htmlContent: string | null = null;
   private inputCb: InputCallback | null = null;
   private cancelCb: CancelCallback | null = null;
+  private confirmCb: ConfirmCallback | null = null;
   private connectCb: ConnectCallback | null = null;
   /** 实际监听端口（start 后设置） */
   portUsed: number = 0;
@@ -35,6 +37,7 @@ export class NanoCodeWebServer {
 
   onInput(cb: InputCallback): void { this.inputCb = cb; }
   onCancel(cb: CancelCallback): void { this.cancelCb = cb; }
+  onConfirm(cb: ConfirmCallback): void { this.confirmCb = cb; }
   /** 新 SSE 客户端连入时回调，可发送初始状态 */
   onConnect(cb: ConnectCallback): void { this.connectCb = cb; }
 
@@ -93,6 +96,7 @@ export class NanoCodeWebServer {
         if (req.method === 'GET' && sUrl.pathname === '/events') return this.handleSSE(req, res);
         if (req.method === 'POST' && sUrl.pathname === '/input') return this.handleInput(req, res);
         if (req.method === 'POST' && sUrl.pathname === '/cancel') return this.handleCancel(req, res);
+        if (req.method === 'POST' && sUrl.pathname === '/confirm') return this.handleConfirm(req, res);
         if (req.method === 'GET' && sUrl.pathname === '/health') return this.handleHealth(res);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/web-files/')) return this.handleFile(req, res, sUrl.pathname);
         return this.handleIndex(res);
@@ -149,6 +153,21 @@ export class NanoCodeWebServer {
     if (this.cancelCb) this.cancelCb();
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ ok: true }));
+  }
+
+  private handleConfirm(req: http.IncomingMessage, res: http.ServerResponse): void {
+    let body = '';
+    req.on('data', (chunk: string) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        if (typeof parsed?.id === 'string' && typeof parsed?.approved === 'boolean' && this.confirmCb) {
+          this.confirmCb(parsed.id, parsed.approved);
+        }
+      } catch { /* ignore parse errors */ }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true }));
+    });
   }
 
   private handleHealth(res: http.ServerResponse): void {

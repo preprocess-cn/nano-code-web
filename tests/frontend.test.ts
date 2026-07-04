@@ -83,7 +83,7 @@ describe('前端渲染测试', { concurrency: false }, () => {
     assert.ok(text?.includes('readFile'), `卡片应包含工具名 readFile, 实际: ${text}`);
     assert.ok(text?.includes('running'), `卡片应包含 running 状态, 实际: ${text}`);
 
-    const argsEl = card.locator('.tool-args');
+    const argsEl = card.locator('.tool-section-content').first();
     const argsText = await argsEl.textContent();
     assert.ok(argsText?.includes('/tmp/test.txt'), `args 应显示路径, 实际: ${argsText}`);
   });
@@ -165,8 +165,9 @@ describe('前端渲染测试', { concurrency: false }, () => {
 
     const card = p.locator('.tool-card');
     assert.ok(await card.isVisible(), '工具卡片应可见');
-    // args 为空时不应渲染 tool-args 区域
-    assert.equal(await card.locator('.tool-args').count(), 0, '空 args 不应有 tool-args 元素');
+    // args 为空时不应渲染 Arguments 标签区域
+    const hasArgsLabel = await card.locator('.tool-section-label').evaluateAll(labels => labels.some(l => l.textContent === 'Arguments'));
+    assert.ok(!hasArgsLabel, '空 args 不应显示 Arguments 区域');
   });
 
   it('session:start 清空旧消息和工具卡片', async () => {

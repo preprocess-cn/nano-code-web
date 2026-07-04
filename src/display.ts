@@ -93,6 +93,10 @@ function createWebDisplay() {
   let registry: any = null;
   let agentName = 'main';
 
+  // 授权确认状态
+  let confirmState: { id: string; resolve: (v: boolean) => void } | null = null;
+  let confirmIdCounter = 0;
+
   // 工具调用 ID 追踪（串行场景下完全正确）
   let currentToolId: string | null = null;
   let currentToolName: string | null = null;
@@ -189,9 +193,42 @@ function createWebDisplay() {
 
       await registry.register(toolTracker);
 
+      // 注册授权确认回调
+      registry.setConfirmCallback(async (req: any) => {
+        // 如有旧的 pending 确认，先拒绝
+        if (confirmState) { confirmState.resolve(false); confirmState = null; }
+        const id = 'cf_' + (++confirmIdCounter) + '_' + Date.now().toString(36);
+        return new Promise(resolve => {
+          confirmState = { id, resolve };
+          server.broadcast('confirmation:request', {
+            id, toolName: req.toolName, message: req.message,
+            details: req.details, agentName,
+          });
+        });
+      });
+
+      // 处理前端发回的确认结果
+      server.onConfirm((id: string, approved: boolean) => {
+        if (confirmState && confirmState.id === id) {
+          const r = confirmState.resolve;
+          confirmState = null;
+          r(approved);
+        }
+      });
+
       // 启动 HTTP/SSE 服务器
-      const port = await server.start();
-      process.stderr.write(`\n  nano-code-web UI: http://localhost:${port} （远程访问使用服务器 IP）\n\n`);
+      try {
+        const port = await server.start();
+        process.stderr.write(`\n  nano-code-web UI: http://localhost:${port} （远程访问使用服务器 IP）\n\n`);
+      } catch (err: any) {
+        const portHint = err?.port ? `端口 ${err.port}` : '端口';
+        if (err?.code === 'EADDRINUSE') {
+          process.stderr.write(`\n  错误：${portHint} 已被占用，请关闭其他进程后重试\n\n`);
+        } else {
+          process.stderr.write(`\n  错误：无法启动 Web 服务器 - ${err?.message || err}\n\n`);
+        }
+        process.exit(1);
+      }
     },
 
     // ── 会话生命周期 ──

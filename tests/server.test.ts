@@ -130,6 +130,15 @@ describe('HTTP routes', () => {
     assert.equal(status, 200);
     assert.ok(cancelled);
   });
+
+  it('POST /confirm 触发 onConfirm 回调', async () => {
+    const confirmResult = new Promise<{ id: string; approved: boolean }>(resolve => {
+      server.onConfirm((id, approved) => resolve({ id, approved }));
+    });
+    const { status } = await postJSON(`${baseUrl}/confirm`, { id: 'cf_test', approved: true });
+    assert.equal(status, 200);
+    assert.deepEqual(await confirmResult, { id: 'cf_test', approved: true });
+  });
 });
 
 describe('SSE 单客户端广播', () => {
