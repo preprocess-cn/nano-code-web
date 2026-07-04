@@ -118,10 +118,12 @@ export class NanoCodeWebServer {
     res.flushHeaders();
 
     const client: SSEClient = { id: crypto.randomUUID(), res };
-    this.clients.push(client);
 
     // 新客户端连入时，发送当前状态（用于浏览器晚于 server 启动的场景）
     this.connectCb?.(client);
+
+    // 初始化完成后才加入广播列表，避免初始化期间收到 broadcast 写入
+    this.clients.push(client);
 
     const keepAlive = setInterval(() => { res.write(':keepalive\n\n'); }, 15000);
 

@@ -52,12 +52,19 @@ export class ThinkFilter {
 
 export class ToolCallBroadcaster {
   private bcIds = new Set<string>();
+  private historyCb: ((type: string, data: Record<string, unknown>) => void) | null = null;
+
+  setHistoryCallback(cb: (type: string, data: Record<string, unknown>) => void) {
+    this.historyCb = cb;
+  }
 
   /** 返回是否真正广播了（false = 重复跳过） */
   broadcastCall(server: NanoCodeWebServer, id: string, toolName: string | null, args: unknown, agentName: string): boolean {
     if (this.bcIds.has(id)) return false;
     this.bcIds.add(id);
-    server.broadcast('tool:call', { id, toolName, args, agentName });
+    const data: Record<string, unknown> = { id, toolName, args, agentName };
+    server.broadcast('tool:call', data);
+    this.historyCb?.('tool:call', data);
     return true;
   }
 
@@ -65,7 +72,9 @@ export class ToolCallBroadcaster {
   broadcastResult(server: NanoCodeWebServer, id: string, toolName: string | null, status: string, message: string | undefined | null, agentName: string): boolean {
     if (!this.bcIds.has(id)) return false;
     this.bcIds.delete(id);
-    server.broadcast('tool:result', { id, toolName, status, message, agentName });
+    const data: Record<string, unknown> = { id, toolName, status, message, agentName };
+    server.broadcast('tool:result', data);
+    this.historyCb?.('tool:result', data);
     return true;
   }
 
@@ -105,6 +114,18 @@ function createWebDisplay() {
   let showThink = false;
   const thinkFilter = new ThinkFilter();
   const toolCallBc = new ToolCallBroadcaster();
+  toolCallBc.setHistoryCallback(pushHistory);
+
+  // 事件历史环形缓冲区（用于前端重连时回放）
+  const MAX_EVENT_HISTORY = 500;
+  const eventRing: { type: string; data: Record<string, unknown> }[] = new Array(MAX_EVENT_HISTORY);
+  let ringHead = 0;
+  let ringCount = 0;
+  function pushHistory(type: string, data: Record<string, unknown>) {
+    eventRing[(ringHead + ringCount) % MAX_EVENT_HISTORY] = { type, data };
+    if (ringCount < MAX_EVENT_HISTORY) ringCount++;
+    else ringHead = (ringHead + 1) % MAX_EVENT_HISTORY;
+  }
 
   // 会话状态快照（用于新 SSE 客户端连入时重放）
   let lastSessionStart: any = null;
@@ -115,6 +136,23 @@ function createWebDisplay() {
     if (lastSessionStart) {
       const msg = `event: session:start\ndata: ${JSON.stringify(lastSessionStart)}\n\n`;
       client.res.write(msg);
+    }
+    // 重放历史事件，合并连续的 stream:chunk（大量小块合并为一条完整消息）
+    let i = 0;
+    while (i < ringCount) {
+      const evt = eventRing[(ringHead + i) % MAX_EVENT_HISTORY];
+      if (evt.type === 'stream:chunk') {
+        let text = '';
+        const agentName = evt.data.agentName;
+        while (i < ringCount && eventRing[(ringHead + i) % MAX_EVENT_HISTORY].type === 'stream:chunk') {
+          text += eventRing[(ringHead + i) % MAX_EVENT_HISTORY].data.text;
+          i++;
+        }
+        client.res.write(`event: stream:chunk\ndata: ${JSON.stringify({ text, agentName })}\n\n`);
+      } else {
+        client.res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt.data)}\n\n`);
+        i++;
+      }
     }
     if (isReady) {
       client.res.write('event: session:ready\ndata: {}\n\n');
@@ -249,6 +287,7 @@ function createWebDisplay() {
       thinkFilter.reset();
       toolCallBc.reset();
       isReady = false;
+      ringHead = 0; ringCount = 0; // 新 session / /clear 时清空历史缓冲区
       lastSessionStart = {
         greeting: config.greeting,
         agentName,
@@ -303,26 +342,25 @@ function createWebDisplay() {
     },
 
     onUserInput(_input: string, _sourcePlugin: string): void {
-      // 新用户输入时清空追踪状态
       currentToolId = null;
       currentToolName = null;
-      // 不广播 user:input — 前端已在 sendInput() 中乐观渲染
+      server.broadcast('user:input', { text: _input, agentName });
+      pushHistory('user:input', { text: _input, agentName });
     },
 
     // ── 显示事件（全部转发为 SSE）──
 
     onStatus(event: any): void {
-      server.broadcast('status', {
-        level: event.level,
-        message: event.message,
-        agentName: event.agentName,
-      });
+      const data = { level: event.level, message: event.message, agentName: event.agentName };
+      server.broadcast('status', data);
+      pushHistory('status', data);
     },
 
     onStreamChunk(event: any): void {
       const text = thinkFilter.filter(event.text, showThink);
       if (text) {
         server.broadcast('stream:chunk', { text, agentName: event.agentName });
+        pushHistory('stream:chunk', { text, agentName: event.agentName });
       }
     },
 
@@ -342,11 +380,9 @@ function createWebDisplay() {
     },
 
     onError(event: any): void {
-      server.broadcast('error', {
-        message: event.message,
-        stack: event.stack,
-        agentName: event.agentName,
-      });
+      const data = { message: event.message, stack: event.stack, agentName: event.agentName };
+      server.broadcast('error', data);
+      pushHistory('error', data);
     },
 
     onDebug(event: any): void {
@@ -357,11 +393,15 @@ function createWebDisplay() {
     },
 
     onAgentTurnStart(event: any): void {
-      server.broadcast('agent:turn_start', { agentName: event.agentName });
+      const data = { agentName: event.agentName };
+      server.broadcast('agent:turn_start', data);
+      pushHistory('agent:turn_start', data);
     },
 
     onAgentTurnEnd(event: any): void {
-      server.broadcast('agent:turn_end', { agentName: event.agentName });
+      const data = { agentName: event.agentName };
+      server.broadcast('agent:turn_end', data);
+      pushHistory('agent:turn_end', data);
     },
 
     onStateSnapshot(snapshot: any): void {

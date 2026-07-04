@@ -92,11 +92,17 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `agent:turn_start` | 后端 → 前端 | Agent 轮次开始 |
 | `agent:turn_end` | 后端 → 前端 | Agent 轮次结束 |
 | `confirmation:request` | 后端 → 前端 | 授权确认请求（Allow/Deny） |
-| `user:input` | 前端 → 后端 | 用户输入（HTTP POST） |
+| `user:input` | 后端 → 前端 | 用户输入（全局广播，用于历史重放） |
 | `cancel` | 前端 → 后端 | 取消请求（HTTP POST） |
 | `confirm` | 前端 → 后端 | 授权确认结果（HTTP POST） |
 
 ## 关键实现细节
+
+### 前端重连与历史消息
+
+前端断开后重新打开时，后端会将已广播的历史事件（`stream:chunk`、`user:input`、`tool:call/result`、`status`、`agent:turn_start/end`、`error`）通过 `onConnect` 回调重新发送给新客户端。缓冲区上限 500 条，`/clear` 或新 session 时自动清空。
+
+配合 nano-code 的 `--continue` / `-c` 标志使用时，`restoreSession()` 会通过 DisplayPlugin 回放已保存的对话消息，nano-code-web 将其广播为 SSE 事件并同时写入历史缓冲区，前端刷新后仍可看到历史。
 
 ### 工具调用双向广播
 
@@ -117,7 +123,7 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 
 ```bash
 npm run dev    # tsc --watch 增量编译
-npm test       # 运行所有测试（45 用例）
+npm test       # 运行所有测试（65 用例）
 ```
 
 ### 测试
@@ -134,9 +140,9 @@ npx tsx --test tests/tool-card-scroll.test.ts
 ```
 
 测试覆盖：
-- `tests/display.test.ts` — ThinkFilter（11 用例，含残留 `</think>` 剥离）+ ToolCallBroadcaster（7 用例）
+- `tests/display.test.ts` — ThinkFilter（12 用例）+ ToolCallBroadcaster（12 用例，含历史回调）+ 环形缓冲区（9 用例）+ SSE 重放（4 用例）
 - `tests/server.test.ts` — NanoCodeWebServer（18 用例）
-- `tests/frontend.test.ts` — Playwright 前端渲染（8 用例）
+- `tests/frontend.test.ts` — Playwright 前端渲染（9 用例）
 - `tests/tool-card-scroll.test.ts` — Playwright 滚动高度（1 用例）
 
 ## 项目文件结构

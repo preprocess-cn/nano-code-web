@@ -431,6 +431,13 @@ function connect() {
     scrollBottom();
   });
 
+  es.addEventListener('user:input', (e) => {
+    const d = JSON.parse(e.data);
+    renderImmediate();
+    state.currentMsg = null;
+    addMsg('user', escapeHtml(d.text));
+  });
+
   es.onerror = () => { setStatus('disconnected', 'Reconnecting...'); state.connected = false; setInputEnabled(false); };
   es.onopen = () => { setStatus('connected', 'Connected'); state.connected = true; };
 }
@@ -440,12 +447,15 @@ async function sendInput() {
   if (!text.trim()) return;
   inputEl.value = '';
   setInputEnabled(false);
-  addMsg('user', escapeHtml(text));
   state.currentMsg = null;
   try {
     const r = await fetch('/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text.trim() }) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (err) { addMsg('error', 'Failed to send: ' + err.message); setInputEnabled(true); }
+  } catch (err) {
+    addMsg('user', escapeHtml(text.trim()));
+    addMsg('error', 'Failed to send: ' + err.message);
+    setInputEnabled(true);
+  }
 }
 
 async function sendCancel() { try { await fetch('/cancel', { method: 'POST', body: '{}' }); } catch {} }

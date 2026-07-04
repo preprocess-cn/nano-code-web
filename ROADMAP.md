@@ -30,6 +30,19 @@
 - **ToolCallBroadcaster**
   - 双向路径去重（NanoPlugin + DisplayPlugin 共享实例）
   - SSE 级别广播保护（result 无对应 call 时不广播）
+  - 历史回调（`setHistoryCallback`），用于事件缓冲
+
+- **事件历史缓冲区（`eventHistory`）**
+  - 环形缓冲区，上限 500 条，记录所有已广播的 SSE 事件
+  - 新客户端连入时重放历史事件（`onConnect` 回调）
+  - `/clear` 或新 session 时自动清空
+
+- **`user:input` SSE 广播**
+  - 用户输入通过 `onUserInput` 全局广播，前端根据该事件渲染用户气泡
+  - 前后端统一消息来源，历史重放时用户消息可见
+
+- **前端重连正确性**
+  - `user:input` 事件中重置 `state.currentMsg`，确保 `-c` 恢复时不同轮次的消息不会合并
 
 - **授权确认**
   - `registry.setConfirmCallback` — 接收 nano-code 授权请求
@@ -51,7 +64,7 @@
   - TypeScript + NodeNext 模块系统
   - `node:test` 单元测试
   - Playwright 前端集成测试
-  - 共 45 测试用例（11 ThinkFilter + 7 ToolCallBroadcaster + 18 Server + 8 前端渲染 + 1 滚动高度）
+  - 共 65 测试用例（12 ThinkFilter + 12 ToolCallBroadcaster + 9 环形缓冲区 + 4 SSE 重放 + 18 Server + 9 前端渲染 + 1 滚动高度）
 
 ### 已修复 Bug
 
@@ -71,6 +84,13 @@
   - 根因：Web display 未调用 `registry.setOutputHandler()`，`command.ts` 回退到 `process.stdout.write` 直写终端
   - 修复：添加 `setOutputHandler`，将 stdout/stderr 转发为 `tool:stdout`/`tool:stderr` SSE 事件
 
+- ~~`--continue` / `-c` 恢复时不同轮次助手消息被合并为一个气泡~~ — 2026-07-04 修复
+  - 根因：`restoreSession()` 在消息间不调用 `onAgentTurnEnd`，前端的 `state.currentMsg` 未重置，第二轮 `stream:chunk` 追加到第一轮 DOM 元素
+  - 修复：前端 `user:input` handler 中 `renderImmediate()` + `state.currentMsg = null`
+- ~~前端重连后工具卡片丢失、消息顺序错乱~~ — 2026-07-04 修复
+  - 根因：重放时 `stream:chunk` 合并逻辑可能跨轮合并
+  - 修复：去掉合并，每个事件独立重放
+
 ### 已知 Bug
 
 - **Markdown 列表渲染不稳定** — CDN 库（markdown-it/highlight.js/DOMPurify）通过 `<script defer>` 延迟加载，若用户网络较慢（如境外 CDN 访问受限），库加载晚于 stream:chunk，导致列表、表格等 markdown 格式未能渲染。已添加轮询重渲染机制（300ms），但若 CDN 完全不可用则永久回退到纯文本。
@@ -86,7 +106,7 @@
 
 ### 中期（v0.2.0）
 
-- [ ] **多轮对话历史** — 保存并显示历史会话
+- [ ] **历史多媒体缓存** — 图片/文件 URL 在重连后保留
 - [ ] **消息复制按钮** — 鼠标悬停时显示复制图标
 - [ ] **图片/附件上传** — 通过 POST 支持文件上传
 - [ ] **响应式布局** — 移动端支持

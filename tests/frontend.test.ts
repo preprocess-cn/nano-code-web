@@ -240,4 +240,21 @@ describe('前端渲染测试', { concurrency: false }, () => {
     const allText = await p.locator('#messages').textContent();
     assert.ok(!allText?.includes('不该显示'), 'debug=false 时不应显示 debug 信息');
   });
+
+  it('user:input 事件渲染用户消息气泡', async () => {
+    const p = await newPage();
+
+    server.broadcast('session:start', {
+      greeting: '您好', agentName: 'main',
+      showThink: false, debug: false,
+    });
+    await p.waitForTimeout(50);
+
+    server.broadcast('user:input', { text: '测试用户消息', agentName: 'main' });
+    await p.waitForTimeout(200);
+
+    const userMsg = p.locator('.msg.user');
+    assert.ok(await userMsg.isVisible(), '用户消息气泡应可见');
+    assert.ok((await userMsg.textContent())?.includes('测试用户消息'), '消息内容应正确');
+  });
 });

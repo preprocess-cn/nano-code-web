@@ -31,6 +31,263 @@ async function collectSSE(url: string): Promise<{ events: Array<{ type: string; 
   });
 }
 
+// ── 事件历史环形缓冲区 ──
+
+describe('Event History Ring Buffer', { concurrency: true }, () => {
+  /** 创建一个隔离的环形缓冲区模拟 display.ts 中的实现 */
+  function createRing(capacity: number) {
+    const ring: Array<{ type: string; data: Record<string, unknown> }> = new Array(capacity);
+    let head = 0;
+    let count = 0;
+    return {
+      push(type: string, data: Record<string, unknown>) {
+        ring[(head + count) % capacity] = { type, data };
+        if (count < capacity) count++;
+        else head = (head + 1) % capacity;
+      },
+      replay(): Array<{ type: string; data: Record<string, unknown> }> {
+        const result: Array<{ type: string; data: Record<string, unknown> }> = [];
+        for (let i = 0; i < count; i++) result.push(ring[(head + i) % capacity]);
+        return result;
+      },
+      clear() { head = 0; count = 0; },
+      get count() { return count; },
+    };
+  }
+
+  it('事件按推入顺序重放', () => {
+    const buf = createRing(10);
+    buf.push('a', { n: 1 });
+    buf.push('b', { n: 2 });
+    buf.push('c', { n: 3 });
+    const replayed = buf.replay();
+    assert.equal(replayed.length, 3);
+    assert.equal(replayed[0].type, 'a');
+    assert.equal(replayed[1].type, 'b');
+    assert.equal(replayed[2].type, 'c');
+  });
+
+  it('空缓冲区重放为空数组', () => {
+    const buf = createRing(10);
+    assert.deepEqual(buf.replay(), []);
+  });
+
+  it('clear() 后重放为空，可重新写入', () => {
+    const buf = createRing(10);
+    buf.push('a', { n: 1 });
+    buf.push('b', { n: 2 });
+    buf.clear();
+    assert.deepEqual(buf.replay(), []);
+    buf.push('c', { n: 3 });
+    assert.equal(buf.replay().length, 1);
+    assert.equal(buf.replay()[0].data.n, 3);
+  });
+
+  it('超出容量时丢弃最旧事件', () => {
+    const buf = createRing(3);
+    buf.push('a', { n: 1 });
+    buf.push('b', { n: 2 });
+    buf.push('c', { n: 3 });
+    buf.push('d', { n: 4 });
+    const replayed = buf.replay();
+    assert.equal(replayed.length, 3);
+    assert.equal(replayed[0].data.n, 2);
+    assert.equal(replayed[1].data.n, 3);
+    assert.equal(replayed[2].data.n, 4);
+  });
+
+  it('填满容量时全部保留', () => {
+    const buf = createRing(3);
+    buf.push('a', { n: 1 });
+    buf.push('b', { n: 2 });
+    buf.push('c', { n: 3 });
+    assert.equal(buf.replay().length, 3);
+  });
+
+  it('超出容量后继续推入保持固定长度', () => {
+    const buf = createRing(3);
+    buf.push('a', { n: 1 });
+    buf.push('b', { n: 2 });
+    buf.push('c', { n: 3 });
+    buf.push('d', { n: 4 });
+    buf.push('e', { n: 5 });
+    assert.equal(buf.replay().length, 3);
+    assert.deepEqual(buf.replay().map(e => e.data.n), [3, 4, 5]);
+  });
+
+  it('500 容量推入 501 条不崩溃，保留最新 500 条', () => {
+    const buf = createRing(500);
+    for (let i = 1; i <= 501; i++) buf.push('evt', { n: i });
+    assert.equal(buf.replay().length, 500);
+    assert.equal(buf.replay()[0].data.n, 2);   // 第 2 ~ 501
+    assert.equal(buf.replay()[499].data.n, 501);
+  });
+
+  it('容量 1 的极端情况', () => {
+    const buf = createRing(1);
+    buf.push('a', { n: 1 });
+    assert.equal(buf.replay().length, 1);
+    buf.push('b', { n: 2 });
+    assert.equal(buf.replay().length, 1);
+    assert.equal(buf.replay()[0].data.n, 2);
+  });
+
+  it('容量 500 推入正好 500 条全部保留', () => {
+    const buf = createRing(500);
+    for (let i = 1; i <= 500; i++) buf.push('evt', { n: i });
+    assert.equal(buf.replay().length, 500);
+    assert.equal(buf.replay()[0].data.n, 1);
+    assert.equal(buf.replay()[499].data.n, 500);
+  });
+});
+
+// ── SSE 事件重放集成测试 ──
+
+/** 连接 SSE，返回 { events, close }，等待 waitMs 让初始数据到达后 resolve */
+function connectSSE(url: string, waitMs = 200): Promise<{ events: Array<{ type: string; data: string }>; close: () => void }> {
+  return new Promise((resolve, reject) => {
+    const events: Array<{ type: string; data: string }> = [];
+    const req = http.get(url, { agent: false }, (res) => {
+      let buf = '';
+      let eventType = '';
+      res.on('data', (chunk: string) => {
+        buf += chunk;
+        const lines = buf.split('\n');
+        buf = '';
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          if (line.startsWith('event: ')) eventType = line.slice(7);
+          else if (line.startsWith('data: ')) {
+            events.push({ type: eventType, data: line.slice(6) });
+            eventType = '';
+          }
+        }
+        buf = lines[lines.length - 1] ?? '';
+      });
+      setTimeout(() => resolve({ events, close: () => { req.destroy(); } }), waitMs);
+    });
+    req.on('error', reject);
+  });
+}
+
+describe('SSE 事件重放', { concurrency: true }, () => {
+  /** 创建带环形缓冲区和重放逻辑的服务器（模拟 display.ts 的 onConnect 行为） */
+  function createReplayServer() {
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const MAX = 500;
+    const ring: Array<{ type: string; data: Record<string, unknown> }> = new Array(MAX);
+    let head = 0, count = 0;
+
+    function pushHistory(type: string, data: Record<string, unknown>) {
+      ring[(head + count) % MAX] = { type, data };
+      if (count < MAX) count++;
+      else head = (head + 1) % MAX;
+    }
+
+    server.onConnect((client) => {
+      // 重放历史事件，合并连续的 stream:chunk
+      let i = 0;
+      while (i < count) {
+        const evt = ring[(head + i) % MAX];
+        if (evt.type === 'stream:chunk') {
+          let text = '';
+          const agentName = evt.data.agentName;
+          while (i < count && ring[(head + i) % MAX].type === 'stream:chunk') {
+            text += ring[(head + i) % MAX].data.text;
+            i++;
+          }
+          client.res.write(`event: stream:chunk\ndata: ${JSON.stringify({ text, agentName })}\n\n`);
+        } else {
+          client.res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt.data)}\n\n`);
+          i++;
+        }
+      }
+    });
+
+    return { server, pushHistory, reset() { head = 0; count = 0; } };
+  }
+
+  it('新客户端连入时重放历史事件', async () => {
+    const { server, pushHistory } = createReplayServer();
+    const port = await server.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    pushHistory('user:input', { text: '你好', agentName: 'main' });
+    pushHistory('status', { level: 'info', message: '思考中', agentName: 'main' });
+    pushHistory('stream:chunk', { text: 'Hel', agentName: 'main' });
+    pushHistory('stream:chunk', { text: 'lo', agentName: 'main' });
+
+    const { events, close } = await connectSSE(`${baseUrl}/events`);
+
+    assert.ok(events.some(e => e.type === 'user:input'), '应重放 user:input');
+    assert.equal(JSON.parse(events.find(e => e.type === 'user:input')!.data).text, '你好');
+    assert.ok(events.some(e => e.type === 'status'), '应重放 status');
+
+    const chunks = events.filter(e => e.type === 'stream:chunk');
+    assert.equal(chunks.length, 1, '连续的 stream:chunk 应合并为 1 条');
+    assert.equal(JSON.parse(chunks[0].data).text, 'Hello');
+
+    close();
+    await server.stop();
+  });
+
+  it('空历史不发送重放事件', async () => {
+    const { server } = createReplayServer();
+    const port = await server.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const { events, close } = await connectSSE(`${baseUrl}/events`);
+
+    const eventTypes = events.map(e => e.type).filter(t => t);
+    assert.equal(eventTypes.length, 0);
+
+    close();
+    await server.stop();
+  });
+
+  it('非连续的 stream:chunk 不合并', async () => {
+    const { server, pushHistory } = createReplayServer();
+    const port = await server.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    pushHistory('stream:chunk', { text: 'Hel', agentName: 'main' });
+    pushHistory('tool:call', { id: 't1', toolName: 'read', agentName: 'main' });
+    pushHistory('stream:chunk', { text: 'lo ', agentName: 'main' });
+    pushHistory('status', { level: 'info', message: 'x', agentName: 'main' });
+    pushHistory('stream:chunk', { text: '世', agentName: 'main' });
+    pushHistory('user:input', { text: 'hi', agentName: 'main' });
+    pushHistory('stream:chunk', { text: '界', agentName: 'main' });
+
+    const { events, close } = await connectSSE(`${baseUrl}/events`);
+
+    const chunks = events.filter(e => e.type === 'stream:chunk');
+    assert.equal(chunks.length, 4, '被其他事件分隔的 chunk 不应合并');
+    assert.equal(JSON.parse(chunks[0].data).text, 'Hel');
+    assert.equal(JSON.parse(chunks[1].data).text, 'lo ');
+    assert.equal(JSON.parse(chunks[2].data).text, '世');
+    assert.equal(JSON.parse(chunks[3].data).text, '界');
+
+    close();
+    await server.stop();
+  });
+
+  it('reset 后重放为空', async () => {
+    const { server, pushHistory, reset } = createReplayServer();
+    const port = await server.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    pushHistory('user:input', { text: '旧消息', agentName: 'main' });
+    reset();
+
+    const { events, close } = await connectSSE(`${baseUrl}/events`);
+
+    assert.equal(events.find(e => e.type === 'user:input'), undefined, 'reset 后不应重放旧事件');
+
+    close();
+    await server.stop();
+  });
+});
+
 describe('ToolCallBroadcaster', { concurrency: true }, () => {
   it('broadcastCall 首次广播返回 true', () => {
     const bc = new ToolCallBroadcaster();
@@ -105,6 +362,78 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
 
     close();
     await server.stop();
+  });
+
+  it('setHistoryCallback broadcastCall 首次广播时回调被调用', () => {
+    const bc = new ToolCallBroadcaster();
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const calls: Array<{ type: string; data: any }> = [];
+    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+
+    bc.broadcastCall(server, 'call_1', 'readFile', { path: '.' }, 'main');
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].type, 'tool:call');
+    assert.equal(calls[0].data.id, 'call_1');
+    server.stop();
+  });
+
+  it('setHistoryCallback broadcastCall 重复时不回调', () => {
+    const bc = new ToolCallBroadcaster();
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const calls: Array<{ type: string; data: any }> = [];
+    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+
+    bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
+    bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
+
+    assert.equal(calls.length, 1, '重复广播不应触发回调');
+    server.stop();
+  });
+
+  it('setHistoryCallback broadcastResult 对应 ID 存在时回调被调用', () => {
+    const bc = new ToolCallBroadcaster();
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const calls: Array<{ type: string; data: any }> = [];
+    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+
+    bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
+    bc.broadcastResult(server, 'call_1', 'readFile', 'success', 'ok', 'main');
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].type, 'tool:call');
+    assert.equal(calls[1].type, 'tool:result');
+    assert.equal(calls[1].data.status, 'success');
+    server.stop();
+  });
+
+  it('setHistoryCallback broadcastResult 对应 ID 不存在时不被调用', () => {
+    const bc = new ToolCallBroadcaster();
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const calls: Array<{ type: string; data: any }> = [];
+    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+
+    bc.broadcastResult(server, 'call_x', 'readFile', 'error', 'not found', 'main');
+
+    assert.equal(calls.length, 0, '不存在的 ID 不应触发回调');
+    server.stop();
+  });
+
+  it('setHistoryCallback 收到正确的 tool:result 数据', () => {
+    const bc = new ToolCallBroadcaster();
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    let captured: any = null;
+    bc.setHistoryCallback((type, data) => { if (type === 'tool:result') captured = data; });
+
+    bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
+    bc.broadcastResult(server, 'call_1', 'readFile', 'error', 'file not found', 'main');
+
+    assert.ok(captured);
+    assert.equal(captured.id, 'call_1');
+    assert.equal(captured.status, 'error');
+    assert.equal(captured.message, 'file not found');
+    assert.equal(captured.toolName, 'readFile');
+    server.stop();
   });
 });
 
