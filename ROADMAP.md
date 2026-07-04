@@ -67,6 +67,9 @@
 - ~~前端页面卡在 "Connecting..."，EventSource 无法连接~~ — 2026-07-04 修复
   - 根因：`public/index.html` 中误用 TypeScript `!.` 非空断言，整个 `<script>` 块解析失败
   - 修复：替换为安全的 `const el = query(...); if (el) el.addEventListener(...)`
+- ~~工具命令输出直写终端~~ — 2026-07-04 修复
+  - 根因：Web display 未调用 `registry.setOutputHandler()`，`command.ts` 回退到 `process.stdout.write` 直写终端
+  - 修复：添加 `setOutputHandler`，将 stdout/stderr 转发为 `tool:stdout`/`tool:stderr` SSE 事件
 
 ### 已知 Bug
 

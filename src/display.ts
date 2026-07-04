@@ -216,6 +216,16 @@ function createWebDisplay() {
         }
       });
 
+      // 注册 output handler：将命令 stdout/stderr 转发为 SSE，避免直写终端
+      r.setOutputHandler({
+        stdout(chunk: string) {
+          server.broadcast('tool:stdout', { text: chunk, agentName });
+        },
+        stderr(chunk: string) {
+          server.broadcast('tool:stderr', { text: chunk, agentName });
+        },
+      });
+
       // 启动 HTTP/SSE 服务器
       try {
         const port = await server.start();
