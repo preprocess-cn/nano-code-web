@@ -68,6 +68,10 @@
   - 根因：`public/index.html` 中误用 TypeScript `!.` 非空断言，整个 `<script>` 块解析失败
   - 修复：替换为安全的 `const el = query(...); if (el) el.addEventListener(...)`
 
+### 已知 Bug
+
+- **Markdown 列表渲染不稳定** — CDN 库（markdown-it/highlight.js/DOMPurify）通过 `<script defer>` 延迟加载，若用户网络较慢（如境外 CDN 访问受限），库加载晚于 stream:chunk，导致列表、表格等 markdown 格式未能渲染。已添加轮询重渲染机制（300ms），但若 CDN 完全不可用则永久回退到纯文本。
+
 ## 待办
 
 ### 短期（v0.1.x）
