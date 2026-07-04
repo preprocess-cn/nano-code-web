@@ -12,7 +12,10 @@
 - **核心功能**
   - 消息气泡渲染（用户/助手/系统/错误/agent 标记）
   - 流式文本输出（`stream:chunk`，`white-space: pre-wrap` 排版）
-  - 工具调用卡片（`tool:call` / `tool:result`，含 spinner、工具名、参数、状态）
+  - Markdown 渲染（`markdown-it` + `highlight.js` 语法高亮 + `DOMPurify` 消毒）
+  - 流式渲染优化：debounce（150ms）+ 代码块闭合检测（``` 成对时立即渲染高亮）
+  - 工具调用卡片（`tool:call` / `tool:result`，点击展开/收拢参数与返回结果）
+  - 授权确认卡片（`confirmation:request` / `POST /confirm`，Allow/Deny 按钮）
   - 思考过程动画（`status: thinking` / `status: end`）
   - Agent 回合切换标记
   - 取消操作（`POST /cancel`）
@@ -28,6 +31,17 @@
   - 双向路径去重（NanoPlugin + DisplayPlugin 共享实例）
   - SSE 级别广播保护（result 无对应 call 时不广播）
 
+- **授权确认**
+  - `registry.setConfirmCallback` — 接收 nano-code 授权请求
+  - `server.onConfirm` / `handleConfirm` — `POST /confirm` HTTP 端点
+  - `confirmation:request` SSE 事件 → 前端 Allow/Deny 按钮 → `POST /confirm` 回传结果
+  - 前端确认卡片样式（⚠ 警告边框、工具名、消息、详情、Allow/Deny 按钮）
+
+- **端口冲突处理**
+  - `server.start()` 失败时捕获 `EADDRINUSE` 错误
+  - 打印友好错误信息（"端口 3030 已被占用，请关闭其他进程后重试"）
+  - `process.exit(1)` 异常退出
+
 - **CSS/渲染可靠性**
   - `flex-shrink: 0` 防止工具卡片在滚动后被 flex 压缩
   - `stream:chunk` 纯空白块不创建气泡（避免空白气泡干扰）
@@ -37,7 +51,7 @@
   - TypeScript + NodeNext 模块系统
   - `node:test` 单元测试
   - Playwright 前端集成测试
-  - 共 44 测试用例（11 ThinkFilter + 7 ToolCallBroadcaster + 17 Server + 8 前端渲染 + 1 滚动高度）
+  - 共 45 测试用例（11 ThinkFilter + 7 ToolCallBroadcaster + 18 Server + 8 前端渲染 + 1 滚动高度）
 
 ### 已修复 Bug
 
@@ -50,6 +64,9 @@
 - ~~空白气泡出现在工具卡片位置~~ — 2026-07-04 修复
   - 根因：`stream:chunk` 的纯 `"\n"` 块在 `tool:call` 后创建了空白助手气泡
   - 修复：前端 `stream:chunk` 处理纯空白文本时不创建新气泡
+- ~~前端页面卡在 "Connecting..."，EventSource 无法连接~~ — 2026-07-04 修复
+  - 根因：`public/index.html` 中误用 TypeScript `!.` 非空断言，整个 `<script>` 块解析失败
+  - 修复：替换为安全的 `const el = query(...); if (el) el.addEventListener(...)`
 
 ## 待办
 
@@ -64,8 +81,6 @@
 
 - [ ] **多轮对话历史** — 保存并显示历史会话
 - [ ] **消息复制按钮** — 鼠标悬停时显示复制图标
-- [ ] **代码块语法高亮**
-- [ ] **Markdown 渲染** — LLM 输出的 Markdown 格式渲染
 - [ ] **图片/附件上传** — 通过 POST 支持文件上传
 - [ ] **响应式布局** — 移动端支持
 

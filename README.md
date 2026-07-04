@@ -14,6 +14,7 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - `GET /events` — SSE 端点，推送实时事件
    - `POST /input` — 接收用户输入
    - `POST /cancel` — 取消当前请求
+   - `POST /confirm` — 处理前端授权确认（Allow/Deny）
    - `GET /health` — 健康检查
    - `GET /web-files/*` — 临时文件服务
    - `GET /` — 前端页面
@@ -25,8 +26,11 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - `ToolCallBroadcaster` — 工具调用事件去重广播（NanoPlugin + DisplayPlugin 双向路径）
 
 3. **`public/index.html`** — 单页前端
-   - `EventSource` 接收 SSE，渲染消息气泡、工具调用卡片、thinking 动画
-   - 纯 vanilla JS，无框架依赖
+   - `EventSource` 接收 SSE，渲染消息气泡、工具调用卡片、thinking 动画、授权确认卡片
+   - Markdown 渲染（`markdown-it` + `highlight.js` 语法高亮 + `DOMPurify` 安全消毒）
+   - 流式输出优化：debounce（150ms）+ 代码块闭合检测（``` 成对时立即渲染）
+   - 工具卡片点击展开/收拢（参数 + 返回结果）
+   - 纯 vanilla JS，无框架依赖，CDN 延迟加载渲染库
 
 ## Quick Start
 
@@ -87,8 +91,10 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `debug` | 后端 → 前端 | 调试信息 |
 | `agent:turn_start` | 后端 → 前端 | Agent 轮次开始 |
 | `agent:turn_end` | 后端 → 前端 | Agent 轮次结束 |
+| `confirmation:request` | 后端 → 前端 | 授权确认请求（Allow/Deny） |
 | `user:input` | 前端 → 后端 | 用户输入（HTTP POST） |
 | `cancel` | 前端 → 后端 | 取消请求（HTTP POST） |
+| `confirm` | 前端 → 后端 | 授权确认结果（HTTP POST） |
 
 ## 关键实现细节
 
@@ -111,7 +117,7 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 
 ```bash
 npm run dev    # tsc --watch 增量编译
-npm test       # 运行所有测试（44 用例）
+npm test       # 运行所有测试（45 用例）
 ```
 
 ### 测试
@@ -129,7 +135,7 @@ npx tsx --test tests/tool-card-scroll.test.ts
 
 测试覆盖：
 - `tests/display.test.ts` — ThinkFilter（11 用例，含残留 `</think>` 剥离）+ ToolCallBroadcaster（7 用例）
-- `tests/server.test.ts` — NanoCodeWebServer（17 用例）
+- `tests/server.test.ts` — NanoCodeWebServer（18 用例）
 - `tests/frontend.test.ts` — Playwright 前端渲染（8 用例）
 - `tests/tool-card-scroll.test.ts` — Playwright 滚动高度（1 用例）
 
