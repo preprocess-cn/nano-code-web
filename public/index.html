@@ -422,6 +422,14 @@ async function sendConfirm(id, approved) {
 
 inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(); } });
 connect();
+// CDN 库加载完成后重渲染当前消息（处理库晚于 stream:chunk 到达的 case）
+(function pollMdLibs() {
+  if (window.markdownit && window.hljs && window.DOMPurify) {
+    if (state.currentMsg && state.currentRawText) doRender();
+    return;
+  }
+  setTimeout(pollMdLibs, 300);
+})();
 </script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/14.1.0/markdown-it.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>

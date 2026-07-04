@@ -185,4 +185,14 @@ describe('ThinkFilter', { concurrency: true }, () => {
     assert.equal(f.filter('</think>leading', false), 'leading');
     assert.equal(f.filter('mid</think>dle</think>end', false), 'middleend');
   });
+
+  it('</think> 标签跨 chunk 切割时不泄漏', () => {
+    const f = new ThinkFilter();
+    // 模拟 </think> 在 chunk 边界被切成 </thi 和 nk>
+    assert.equal(f.filter('text</thi', false), 'text');
+    assert.equal(f.filter('nk> rest', false), ' rest');
+    // 正常情况：完整的 </think> 被剥离
+    f.reset();
+    assert.equal(f.filter('a</think>b', false), 'ab');
+  });
 });

@@ -27,8 +27,10 @@ export class ThinkFilter {
       } else {
         const start = remaining.indexOf('<think>');
         if (start === -1) {
-          // 没有 think 标签，检查尾部是否可能是 <think> 前缀
-          this.pending = partialTagPrefix(remaining, '<think>');
+          // 没有 think 标签，检查尾部是否可能是 <think> 或 </think> 前缀
+          const thinkPending = partialTagPrefix(remaining, '<think>');
+          const closeThinkPending = partialTagPrefix(remaining, '</think>');
+          this.pending = thinkPending || closeThinkPending;
           return result + remaining.slice(0, remaining.length - this.pending.length).replace(/<\/think>/g, '');
         }
         result += remaining.slice(0, start);
