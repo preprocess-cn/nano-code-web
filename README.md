@@ -15,6 +15,8 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - `POST /input` — 接收用户输入
    - `POST /cancel` — 取消当前请求
    - `POST /confirm` — 处理前端授权确认（Allow/Deny）
+   - `POST /question-answer` — 处理前端问询对话框答案提交
+   - `POST /mode-toggle` — 切换 plan/normal 模式（Shift+Tab）
    - `GET /health` — 健康检查
    - `GET /web-files/*` — 临时文件服务
    - `GET /` — 前端页面
@@ -24,12 +26,19 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - 通过 NanoPlugin `onBeforeToolCall/onAfterToolCall` 追踪工具调用 ID
    - `ThinkFilter` — 按 `showThink` 配置过滤 `<think>...</think>` 内容（支持跨 chunk 分割、处理残留 `</think>`）
    - `ToolCallBroadcaster` — 工具调用事件去重广播（NanoPlugin + DisplayPlugin 双向路径）
+   - `注册 ask_user_question 交互式 handler` — 将 LLM 提问转发为前端对话框 SSE 事件，Promise 等待回答
+   - `onBackgroundTask` — 后台任务状态广播（started/completed/error）
+   - `onModeToggle` — store 级别 plan/normal 模式切换（Shift+Tab/点击/命令）
 
 3. **`public/index.html`** — 单页前端
    - `EventSource` 接收 SSE，渲染消息气泡、工具调用卡片、thinking 动画、授权确认卡片
    - Markdown 渲染（`markdown-it` + `highlight.js` 语法高亮 + `DOMPurify` 安全消毒）
    - 流式输出优化：debounce（150ms）+ 代码块闭合检测（``` 成对时立即渲染）
    - 工具卡片点击展开/收拢（参数 + 返回结果）
+   - 问询对话框（三屏：选择 → 自定义输入 → 确认，Esc 取消）
+   - 后台任务状态条（`background:task` 事件驱动，自动消隐）
+   - Plan mode 指示器（`● PLAN`/`○ normal`，Shift+Tab 切换）
+   - 状态栏（`status:bar` 事件驱动，显示 mode/tasks 等段落）
    - 纯 vanilla JS，无框架依赖，CDN 延迟加载渲染库
 
 ## Quick Start
@@ -92,9 +101,14 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `agent:turn_start` | 后端 → 前端 | Agent 轮次开始 |
 | `agent:turn_end` | 后端 → 前端 | Agent 轮次结束 |
 | `confirmation:request` | 后端 → 前端 | 授权确认请求（Allow/Deny） |
+| `question:dialog` | 后端 → 前端 | 问询对话框（LLM 向用户提问） |
+| `background:task` | 后端 → 前端 | 后台任务状态（started/completed/error） |
+| `status:bar` | 后端 → 前端 | 状态栏段落（mode/tasks 等） |
 | `user:input` | 后端 → 前端 | 用户输入（全局广播，用于历史重放） |
 | `cancel` | 前端 → 后端 | 取消请求（HTTP POST） |
 | `confirm` | 前端 → 后端 | 授权确认结果（HTTP POST） |
+| `question-answer` | 前端 → 后端 | 问询对话框答案提交（HTTP POST） |
+| `mode-toggle` | 前端 → 后端 | Plan mode 切换（HTTP POST） |
 
 ## 关键实现细节
 
@@ -123,7 +137,7 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 
 ```bash
 npm run dev    # tsc --watch 增量编译
-npm test       # 运行所有测试（65 用例）
+npm test       # 运行所有测试（70 用例）
 ```
 
 ### 测试
@@ -140,8 +154,8 @@ npx tsx --test tests/tool-card-scroll.test.ts
 ```
 
 测试覆盖：
-- `tests/display.test.ts` — ThinkFilter（12 用例）+ ToolCallBroadcaster（12 用例，含历史回调）+ 环形缓冲区（9 用例）+ SSE 重放（4 用例）
-- `tests/server.test.ts` — NanoCodeWebServer（18 用例）
+- `tests/display.test.ts` — ThinkFilter（12 用例）+ ToolCallBroadcaster（12 用例，含历史回调）+ 环形缓冲区（9 用例）+ SSE 重放（4 用例）+ background:task（2 用例）+ question:dialog（1 用例）
+- `tests/server.test.ts` — NanoCodeWebServer（20 用例，含 question-answer / mode-toggle）
 - `tests/frontend.test.ts` — Playwright 前端渲染（9 用例）
 - `tests/tool-card-scroll.test.ts` — Playwright 滚动高度（1 用例）
 
@@ -149,10 +163,11 @@ npx tsx --test tests/tool-card-scroll.test.ts
 
 ```
 ├── src/
-│   ├── display.ts    # DisplayPlugin 实现（ThinkFilter、ToolCallBroadcaster）
-│   └── server.ts     # HTTP/SSE 服务器
+│   ├── display.ts       # DisplayPlugin 实现（ThinkFilter、ToolCallBroadcaster、ask_user_question handler）
+│   ├── server.ts        # HTTP/SSE 服务器
+│   └── tool-display.ts  # 工具名/参数格式化
 ├── public/
-│   └── index.html    # 前端页面（vanilla JS）
+│   └── index.html       # 前端页面（vanilla JS）
 ├── tests/
 │   ├── display.test.ts
 │   ├── server.test.ts

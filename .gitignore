@@ -5,3 +5,4 @@ vendor/
 .env*
 .nano-code-session.json
 *.log
+CLAUDE.local.md

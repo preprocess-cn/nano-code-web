@@ -139,6 +139,23 @@ describe('HTTP routes', () => {
     assert.equal(status, 200);
     assert.deepEqual(await confirmResult, { id: 'cf_test', approved: true });
   });
+
+  it('POST /question-answer 触发 onQuestionAnswer 回调', async () => {
+    const qaResult = new Promise<{ id: string; answers: Record<string, string> }>(resolve => {
+      server.onQuestionAnswer((id, answers) => resolve({ id, answers }));
+    });
+    const { status } = await postJSON(`${baseUrl}/question-answer`, { id: 'qd_test', answers: { q1: 'option A' } });
+    assert.equal(status, 200);
+    assert.deepEqual(await qaResult, { id: 'qd_test', answers: { q1: 'option A' } });
+  });
+
+  it('POST /mode-toggle 触发 onModeToggle 回调', async () => {
+    let toggled = false;
+    server.onModeToggle(() => { toggled = true; });
+    const { status } = await postJSON(`${baseUrl}/mode-toggle`, {});
+    assert.equal(status, 200);
+    assert.ok(toggled);
+  });
 });
 
 describe('SSE 单客户端广播', () => {

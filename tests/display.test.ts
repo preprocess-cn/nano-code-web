@@ -525,3 +525,80 @@ describe('ThinkFilter', { concurrency: true }, () => {
     assert.equal(f.filter('a</think>b', false), 'ab');
   });
 });
+
+describe('background:task SSE 事件广播', { concurrency: true }, () => {
+  it('广播 background:task 被 SSE 客户端收到', async () => {
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const port = await server.start();
+    const { events, close } = await collectSSE(`http://127.0.0.1:${port}/events`);
+    await new Promise((r) => setTimeout(r, 50));
+
+    server.broadcast('background:task', {
+      taskId: 'bg_1',
+      taskStatus: 'started',
+      message: 'Fetching data...',
+      agentName: 'main',
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const bgEvents = events.filter((e) => e.type === 'background:task');
+    assert.equal(bgEvents.length, 1);
+    const data = JSON.parse(bgEvents[0].data);
+    assert.equal(data.taskId, 'bg_1');
+    assert.equal(data.taskStatus, 'started');
+    assert.equal(data.message, 'Fetching data...');
+    assert.equal(data.agentName, 'main');
+
+    close();
+    await server.stop();
+  });
+
+  it('background:task 状态变化事件正确广播', async () => {
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const port = await server.start();
+    const { events, close } = await collectSSE(`http://127.0.0.1:${port}/events`);
+    await new Promise((r) => setTimeout(r, 50));
+
+    server.broadcast('background:task', { taskId: 'bg_2', taskStatus: 'started', message: 'Running...', agentName: 'main' });
+    server.broadcast('background:task', { taskId: 'bg_2', taskStatus: 'completed', message: 'Done', agentName: 'main' });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const started = events.find(e => e.type === 'background:task' && JSON.parse(e.data).taskStatus === 'started');
+    const completed = events.find(e => e.type === 'background:task' && JSON.parse(e.data).taskStatus === 'completed');
+    assert.ok(started, '应有 started 事件');
+    assert.ok(completed, '应有 completed 事件');
+    assert.equal(JSON.parse(completed!.data).message, 'Done');
+
+    close();
+    await server.stop();
+  });
+});
+
+describe('question:dialog SSE 事件广播', { concurrency: true }, () => {
+  it('广播 question:dialog 被 SSE 客户端收到', async () => {
+    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const port = await server.start();
+    const { events, close } = await collectSSE(`http://127.0.0.1:${port}/events`);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const questions = [
+      { question: '你选择哪个？', header: '选择', options: [{ label: 'A', description: '选项 A' }, { label: 'B', description: '选项 B' }] },
+    ];
+    server.broadcast('question:dialog', { id: 'qd_test', questions });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const qdEvents = events.filter((e) => e.type === 'question:dialog');
+    assert.equal(qdEvents.length, 1);
+    const data = JSON.parse(qdEvents[0].data);
+    assert.equal(data.id, 'qd_test');
+    assert.equal(data.questions.length, 1);
+    assert.equal(data.questions[0].header, '选择');
+    assert.equal(data.questions[0].options[0].label, 'A');
+
+    close();
+    await server.stop();
+  });
+});

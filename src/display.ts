@@ -1,4 +1,5 @@
 import { NanoCodeWebServer } from './server.js';
+import { getToolDisplayName, getToolArgsPreview, type ToolDef } from './tool-display.js';
 
 // ── ThinkFilter: 按 showThink 配置过滤 <think>...</think> 块（可跨 chunk）──
 
@@ -59,10 +60,10 @@ export class ToolCallBroadcaster {
   }
 
   /** 返回是否真正广播了（false = 重复跳过） */
-  broadcastCall(server: NanoCodeWebServer, id: string, toolName: string | null, args: unknown, agentName: string): boolean {
+  broadcastCall(server: NanoCodeWebServer, id: string, toolName: string | null, args: unknown, agentName: string, extra?: Record<string, unknown>): boolean {
     if (this.bcIds.has(id)) return false;
     this.bcIds.add(id);
-    const data: Record<string, unknown> = { id, toolName, args, agentName };
+    const data: Record<string, unknown> = { id, toolName, args, agentName, ...extra };
     server.broadcast('tool:call', data);
     this.historyCb?.('tool:call', data);
     return true;
@@ -90,11 +91,11 @@ function partialTagPrefix(text: string, tag: string): string {
   return '';
 }
 
-// ── Store key 常量（与 nano-code 的 SK 对齐） ──
-const SK = {
-  AgentCancelled: 'agent:cancelled',
-  AgentAbort: 'agent:abort',
-} as const;
+// ── Store key 常量（与 nano-code store-keys.ts 对齐）──
+const agentCancelledKey = (name: string) => `agent:cancelled:${name}`;
+const agentAbortKey = (name: string) => `agent:abort:${name}`;
+const SK_MODE = 'task-plan:mode';
+const SK_PRE_MODE = 'task-plan:preMode';
 
 // ── 工厂函数：创建 DisplayPlugin 实例 ──
 
@@ -103,10 +104,15 @@ function createWebDisplay() {
   let promptResolve: ((text: string | null) => void) | null = null;
   let registry: any = null;
   let agentName = 'main';
+  let schemas: ToolDef[] = [];
+  let toolDefsSent = false;
 
   // 授权确认状态
   let confirmState: { id: string; resolve: (v: boolean) => void } | null = null;
   let confirmIdCounter = 0;
+
+  // 问询对话框状态
+  let questionDialogResolve: ((answers: Record<string, string>) => void) | null = null;
 
   // 工具调用 ID 追踪（串行场景下完全正确）
   let currentToolId: string | null = null;
@@ -136,6 +142,10 @@ function createWebDisplay() {
     if (lastSessionStart) {
       const msg = `event: session:start\ndata: ${JSON.stringify(lastSessionStart)}\n\n`;
       client.res.write(msg);
+    }
+    // 发送工具定义（含 displayName），供前端友好展示
+    if (schemas.length > 0) {
+      client.res.write(`event: tool:definitions\ndata: ${JSON.stringify({ definitions: schemas })}\n\n`);
     }
     // 重放历史事件，合并连续的 stream:chunk（大量小块合并为一条完整消息）
     let i = 0;
@@ -183,8 +193,8 @@ function createWebDisplay() {
 
   server.onCancel(() => {
     if (!registry) return;
-    registry.store.set(SK.AgentCancelled, true);
-    const abortCtrl = registry.store.get(SK.AgentAbort);
+    registry.store.set(agentCancelledKey(agentName), true);
+    const abortCtrl = registry.store.get(agentAbortKey(agentName));
     if (abortCtrl && !abortCtrl.signal.aborted) abortCtrl.abort();
   });
 
@@ -197,6 +207,13 @@ function createWebDisplay() {
 
     async onInit(r: any): Promise<void> {
       registry = r;
+
+      // 获取工具定义（含 displayName），供前端友好展示
+      schemas = registry.getAllSchemas?.() ?? [];
+      if (schemas.length > 0 && !toolDefsSent) {
+        server.broadcast('tool:definitions', { definitions: schemas });
+        toolDefsSent = true;
+      }
 
       // 注册工具调用追踪 NanoPlugin
       const toolTracker = {
@@ -215,7 +232,11 @@ function createWebDisplay() {
           let args: any;
           try { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch { args = {}; }
 
-          toolCallBc.broadcastCall(server, toolCall.id || 'no-id', currentToolName, args, agentName);
+          // 将 displayName 和 argsPreview 附加到广播中
+          const displayName = getToolDisplayName(currentToolName ?? 'unknown', schemas);
+          const argsPreview = getToolArgsPreview(args);
+          const extra = { displayName, argsPreview: argsPreview ?? undefined };
+          toolCallBc.broadcastCall(server, toolCall.id || 'no-id', currentToolName, args, agentName, extra);
           return toolCall;
         },
 
@@ -223,7 +244,7 @@ function createWebDisplay() {
           if (currentToolId) {
             toolCallBc.broadcastResult(server, currentToolId, currentToolName, result.status, result.message, agentName);
             currentToolId = null;
-            currentToolName = null;
+            // 保留 currentToolName — DisplayPlugin.onToolResult 仍可能引用
           }
           return result;
         },
@@ -239,8 +260,8 @@ function createWebDisplay() {
         return new Promise(resolve => {
           confirmState = { id, resolve };
           server.broadcast('confirmation:request', {
-            id, toolName: req.toolName, message: req.message,
-            details: req.details, agentName,
+            id, toolName: req.toolName, displayName: req.displayName, message: req.message,
+            details: req.details, diff: req.diff, filePath: req.filePath, agentName,
           });
         });
       });
@@ -251,6 +272,40 @@ function createWebDisplay() {
           const r = confirmState.resolve;
           confirmState = null;
           r(approved);
+        }
+      });
+
+      // 注册 ask_user_question 交互式 handler
+      registry.registerInteractiveHandler('ask_user_question', async (args: any) => {
+        const { questions } = args || {};
+        return new Promise(resolve => {
+          const id = 'qd_' + (++confirmIdCounter) + '_' + Date.now().toString(36);
+          questionDialogResolve = (answers: Record<string, string>) => {
+            resolve({ status: 'success', data: JSON.stringify({ questions, answers }) });
+          };
+          server.broadcast('question:dialog', { id, questions });
+        });
+      });
+
+      // 处理前端发回的对话框答案
+      server.onQuestionAnswer((id: string, answers: Record<string, string>) => {
+        if (questionDialogResolve) {
+          const r = questionDialogResolve;
+          questionDialogResolve = null;
+          r(answers);
+        }
+      });
+
+      // 注册 mode toggle 回调
+      server.onModeToggle(() => {
+        const currentMode = registry.store.get(SK_MODE) || 'normal';
+        if (currentMode === 'plan') {
+          const preMode = registry.store.get(SK_PRE_MODE) || 'normal';
+          registry.store.set(SK_MODE, preMode);
+          registry.store.set(SK_PRE_MODE, undefined);
+        } else {
+          registry.store.set(SK_PRE_MODE, currentMode);
+          registry.store.set(SK_MODE, 'plan');
         }
       });
 
@@ -369,14 +424,17 @@ function createWebDisplay() {
       if (!id) return;
       currentToolId = id;
       currentToolName = event.toolName || event.name || event.function?.name || 'unknown';
-      toolCallBc.broadcastCall(server, id, currentToolName, event.args || event.input || {}, agentName);
+      const args = event.args || event.input || {};
+      const displayName = getToolDisplayName(currentToolName ?? 'unknown', schemas);
+      const argsPreview = getToolArgsPreview(args);
+      toolCallBc.broadcastCall(server, id, currentToolName, args, agentName, { displayName, argsPreview: argsPreview ?? undefined });
     },
 
     onToolResult(event: any): void {
       const id = event.id || event.toolCallId;
       if (!id) return;
-      toolCallBc.broadcastResult(server, id, event.toolName || event.name, event.status, event.message || event.error, agentName);
-      // 不重置 currentToolId/currentToolName — NanoPlugin 的 onAfterToolCall 可能依赖它们
+      // ToolResultEvent 已无 toolName 字段，使用 currentToolName（由 onToolCall/NanoPlugin 设置）
+      toolCallBc.broadcastResult(server, id, currentToolName, event.status, event.message || event.error, agentName);
     },
 
     onError(event: any): void {
@@ -388,6 +446,15 @@ function createWebDisplay() {
     onDebug(event: any): void {
       server.broadcast('debug', {
         data: event.data,
+        agentName: event.agentName,
+      });
+    },
+
+    onBackgroundTask(event: any): void {
+      server.broadcast('background:task', {
+        taskId: event.taskId,
+        taskStatus: event.taskStatus,
+        message: event.message,
         agentName: event.agentName,
       });
     },
@@ -409,6 +476,10 @@ function createWebDisplay() {
         agentName: snapshot.agentName,
         messageCount: snapshot.messageCount,
       });
+    },
+
+    setStatusBar(segments: Record<string, string>): void {
+      server.broadcast('status:bar', { segments });
     },
   };
 

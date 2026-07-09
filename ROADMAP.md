@@ -1,6 +1,6 @@
 # ROADMAP
 
-## v0.1.0 — 当前版本
+## v0.1.1 — 当前版本
 
 ### 已完成
 
@@ -50,6 +50,26 @@
   - `confirmation:request` SSE 事件 → 前端 Allow/Deny 按钮 → `POST /confirm` 回传结果
   - 前端确认卡片样式（⚠ 警告边框、工具名、消息、详情、Allow/Deny 按钮）
 
+- **AskUserQuestion 对话框（v0.1.1 新增）**
+  - 注册 `ask_user_question` 交互式 handler
+  - `question:dialog` SSE 事件 → 前端模态对话框
+  - 三屏流程：选择（单选/多选）→ 自定义输入 → 确认
+  - 键盘导航（↑↓←→ Enter Esc）+ 点击选择
+  - Esc/Ctrl+C 取消对话框，返回空结果
+  - `POST /question-answer` HTTP 端点接收答案
+
+- **Plan mode 支持（v0.1.1 新增）**
+  - `POST /mode-toggle` HTTP 端点
+  - store 级别 mode 切换（读写 `task-plan:mode` / `task-plan:preMode`）
+  - 前端 `● PLAN`/`○ normal` 指示器
+  - Shift+Tab 快捷键、点击切换、/plan 斜杠命令、LLM 自然语言
+  - 状态栏（`status:bar` 事件）联动
+
+- **后台任务追踪（v0.1.1 新增）**
+  - `onBackgroundTask` DisplayPlugin 方法
+  - `background:task` SSE 事件（started/completed/error）
+  - 前端状态条，5 秒后自动消隐已完成/错误的任务
+
 - **端口冲突处理**
   - `server.start()` 失败时捕获 `EADDRINUSE` 错误
   - 打印友好错误信息（"端口 3030 已被占用，请关闭其他进程后重试"）
@@ -64,7 +84,7 @@
   - TypeScript + NodeNext 模块系统
   - `node:test` 单元测试
   - Playwright 前端集成测试
-  - 共 65 测试用例（12 ThinkFilter + 12 ToolCallBroadcaster + 9 环形缓冲区 + 4 SSE 重放 + 18 Server + 9 前端渲染 + 1 滚动高度）
+  - 共 70 测试用例（12 ThinkFilter + 12 ToolCallBroadcaster + 9 环形缓冲区 + 4 SSE 重放 + 20 Server + 9 前端渲染 + 1 滚动高度 + 2 background:task + 1 question:dialog）
 
 ### 已修复 Bug
 
@@ -93,7 +113,7 @@
 
 ### 已知 Bug
 
-- **Markdown 列表渲染不稳定** — CDN 库（markdown-it/highlight.js/DOMPurify）通过 `<script defer>` 延迟加载，若用户网络较慢（如境外 CDN 访问受限），库加载晚于 stream:chunk，导致列表、表格等 markdown 格式未能渲染。已添加轮询重渲染机制（300ms），但若 CDN 完全不可用则永久回退到纯文本。
+> 无已知 Bug
 
 ## 待办
 

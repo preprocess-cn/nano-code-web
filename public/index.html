@@ -26,6 +26,14 @@
   #cancel-btn { padding: 4px 14px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-dim); cursor: pointer; display: none; }
   #cancel-btn:hover { background: rgba(255,107,107,0.1); border-color: var(--error); color: var(--error); }
 
+  /* ── Mode indicator ── */
+  #mode-indicator { display: none; font-size: 12px; font-weight: 600; margin-left: auto; margin-right: 8px; cursor: pointer; user-select: none; padding: 2px 8px; border-radius: 4px; }
+  #mode-indicator.show { display: inline; }
+  #mode-indicator.plan { color: #f59e0b; }
+  #mode-indicator.plan:hover { background: rgba(245,158,11,0.1); }
+  #mode-indicator.normal { color: #9ca3af; }
+  #mode-indicator.normal:hover { background: rgba(156,163,175,0.1); }
+
   /* ── Welcome placeholder ── */
   #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--text-muted); user-select: none; }
   #welcome.hidden { display: none; }
@@ -57,6 +65,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .tool-card-header { cursor: pointer; user-select: none; }
   .tool-name { font-weight: 600; flex: 1; }
+  .tool-args-preview { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 4px; }
   .tool-status { font-size: 12px; color: var(--text-dim); }
   .tool-arrow { font-size: 10px; color: var(--text-muted); margin-left: auto; }
   .tool-detail { display: none; }
@@ -117,6 +126,64 @@
   /* ── Agent turn badge ── */
   .agent-badge { align-self: center; padding: 2px 10px; border-radius: 10px; font-size: 11px; background: var(--accent-bg); border: 1px solid rgba(76,154,255,0.2); color: var(--accent); }
 
+  /* ── Question dialog overlay ── */
+  #qd-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+  #qd-overlay.show { display: flex; }
+  #qd-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 640px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  #qd-header { display: flex; align-items: center; gap: 8px; padding: 14px 18px 0; font-size: 14px; }
+  #qd-header .icon { font-size: 16px; }
+  #qd-header .title { font-weight: 600; color: var(--warning); }
+  #qd-header .progress { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+  #qd-question { padding: 10px 18px 6px; font-size: 14px; color: var(--text); line-height: 1.6; }
+  #qd-options { padding: 6px 18px 8px; }
+  .qd-opt { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin-top: 4px; border: 1px solid transparent; }
+  .qd-opt:hover { background: rgba(255,255,255,0.04); }
+  .qd-opt.focused { background: rgba(76,154,255,0.1); border-color: var(--accent); }
+  .qd-opt .indicator { flex-shrink: 0; font-size: 15px; width: 20px; text-align: center; color: var(--text-dim); }
+  .qd-opt.focused .indicator { color: var(--accent); }
+  .qd-opt.selected .indicator { color: var(--accent); }
+  .qd-opt .label { flex: 1; font-size: 14px; color: var(--text); }
+  .qd-opt.focused .label { color: #fff; }
+  .qd-opt.other .indicator { color: var(--text-muted); }
+  #qd-desc { padding: 0 18px 6px; font-size: 12px; color: var(--text-muted); min-height: 20px; }
+  #qd-hint { padding: 0 18px 14px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  /* custom input screen */
+  #qd-custom-area { display: none; padding: 8px 18px 14px; }
+  #qd-custom-area.show { display: block; }
+  #qd-custom-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit; outline: none; resize: none; min-height: 40px; }
+  #qd-custom-input:focus { border-color: var(--accent); }
+  #qd-custom-hint { display: none; padding: 0 18px 14px; font-size: 11px; color: var(--text-muted); }
+  #qd-custom-hint.show { display: block; }
+  /* confirm screen */
+  #qd-confirm-area { display: none; padding: 8px 18px 14px; }
+  #qd-confirm-area.show { display: block; }
+  .qd-confirm-item { padding: 6px 0; }
+  .qd-confirm-item .q { font-size: 13px; color: var(--text-dim); }
+  .qd-confirm-item .a { font-size: 14px; color: var(--accent); padding-left: 12px; margin-top: 2px; }
+  /* dialog footer */
+  #qd-footer { display: flex; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--border); justify-content: flex-end; }
+  .qd-btn { padding: 6px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; border: none; }
+  .qd-btn.primary { background: var(--accent); color: #fff; }
+  .qd-btn.primary:hover { filter: brightness(1.08); }
+  .qd-btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+  .qd-btn.secondary:hover { border-color: var(--text-dim); color: var(--text); }
+  .qd-btn.danger { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+  .qd-btn.danger:hover { border-color: var(--error); color: var(--error); }
+
+  /* ── Background task display ── */
+  #bg-tasks { display: none; gap: 4px 12px; padding: 4px 20px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); flex-shrink: 0; flex-wrap: wrap; }
+  #bg-tasks.show { display: flex; }
+  .bg-task { display: inline-flex; align-items: center; gap: 4px; }
+  .bg-task .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .bg-task .dot.running { background: var(--accent); animation: pulse 1s infinite; }
+  .bg-task .dot.completed { background: var(--success); }
+  .bg-task .dot.error { background: var(--error); }
+
+  /* ── Status bar ── */
+  #status-bar { display: none; flex-wrap: wrap; gap: 4px 12px; padding: 4px 20px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
+  #status-bar.show { display: flex; }
+  .status-seg { display: inline-flex; align-items: center; gap: 4px; }
+
   /* ── Input area ── */
   #input-area { display: flex; gap: 8px; padding: 12px 20px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
   #input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit; resize: none; outline: none; max-height: 120px; }
@@ -134,6 +201,7 @@
   <h1>nano-code</h1>
   <span class="dot connecting" id="status-dot"></span>
   <span id="status-text">Connecting...</span>
+  <span id="mode-indicator" onclick="toggleMode()"></span>
   <button id="cancel-btn" onclick="sendCancel()">Cancel</button>
 </header>
 
@@ -142,8 +210,36 @@
   <div class="hint">Connected &middot; waiting for input<br>Type a message to start</div>
 </div>
 
+<div id="bg-tasks"></div>
+<div id="status-bar"></div>
 <div id="messages"></div>
 <div id="thinking"><span class="label">Thinking</span><div class="think-dots"><span></span><span></span><span></span></div></div>
+
+<!-- ── Question dialog overlay ── -->
+<div id="qd-overlay">
+  <div id="qd-dialog">
+    <div id="qd-header">
+      <span class="icon">❓</span>
+      <span class="title" id="qd-header-title">Question</span>
+      <span class="progress" id="qd-progress"></span>
+    </div>
+    <div id="qd-question"></div>
+    <div id="qd-options"></div>
+    <div id="qd-desc"></div>
+    <div id="qd-hint"></div>
+    <div id="qd-custom-area">
+      <textarea id="qd-custom-input" rows="2" placeholder="输入自定义文本..."></textarea>
+    </div>
+    <div id="qd-custom-hint">Enter 确认 · Esc 返回</div>
+    <div id="qd-confirm-area"></div>
+    <div id="qd-footer">
+      <button class="qd-btn danger" id="qd-cancel" onclick="qdCancel()">Cancel</button>
+      <button class="qd-btn secondary" id="qd-back" onclick="qdBack()" style="display:none">Back</button>
+      <button class="qd-btn primary" id="qd-next" onclick="qdNext()">Next</button>
+      <button class="qd-btn primary" id="qd-submit" onclick="qdSubmit()" style="display:none">Submit</button>
+    </div>
+  </div>
+</div>
 
 <div id="input-area">
   <textarea id="input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" disabled></textarea>
@@ -152,7 +248,7 @@
 
 <script>
 // ── State ──
-const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false };
+const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false, toolDefinitions: [] };
 
 const $ = id => document.getElementById(id);
 const msgArea = $('messages');
@@ -271,6 +367,303 @@ function setStatus(stateClass, text) {
   statusText.textContent = text;
 }
 
+// ── Mode indicator ──
+const modeEl = $('mode-indicator');
+function updateMode(segments) {
+  const modeText = segments?.mode || '';
+  const isPlan = modeText.includes('PLAN');
+  modeEl.className = 'show ' + (isPlan ? 'plan' : 'normal');
+  modeEl.textContent = isPlan ? '● PLAN [Shift+Tab]' : '○ normal [Shift+Tab]';
+  modeEl.title = isPlan ? 'Click or Shift+Tab to switch to normal mode' : 'Click or Shift+Tab to switch to plan mode';
+}
+async function toggleMode() {
+  try { await fetch('/mode-toggle', { method: 'POST', body: '{}' }); } catch {}
+}
+
+// ── Question dialog state machine ──
+const qd = {
+  questions: [],
+  currentIdx: 0,
+  focusIdx: 0,
+  screen: 'selecting', // 'selecting' | 'customInput' | 'confirming'
+  selections: {},
+  customInputs: {},
+  customText: '',
+  dialogId: '',
+  multiSelect: false,
+};
+
+function qdOpen(data) {
+  qd.questions = data.questions || [];
+  qd.currentIdx = 0;
+  qd.focusIdx = 0;
+  qd.screen = 'selecting';
+  qd.selections = {};
+  qd.customInputs = {};
+  qd.customText = '';
+  qd.dialogId = data.id || '';
+  qd.multiSelect = false;
+  for (const q of qd.questions) qd.selections[q.question] = [];
+  $('qd-overlay').classList.add('show');
+  qdRender();
+  // 将 QD state 暴露给全局
+  window._qd = qd;
+}
+
+function qdClose() {
+  $('qd-overlay').classList.remove('show');
+}
+
+function qdRender() {
+  const overlay = $('qd-overlay');
+  if (!overlay.classList.contains('show')) return;
+  // Reset visibility
+  $('qd-options').style.display = 'none';
+  $('qd-desc').style.display = 'none';
+  $('qd-hint').style.display = 'none';
+  $('qd-custom-area').classList.remove('show');
+  $('qd-custom-hint').classList.remove('show');
+  $('qd-confirm-area').classList.remove('show');
+  $('qd-back').style.display = 'none';
+  $('qd-next').style.display = 'none';
+  $('qd-submit').style.display = 'none';
+  $('qd-cancel').style.display = '';
+
+  if (qd.screen === 'selecting') {
+    qdRenderSelecting();
+  } else if (qd.screen === 'customInput') {
+    qdRenderCustomInput();
+  } else if (qd.screen === 'confirming') {
+    qdRenderConfirming();
+  }
+}
+
+function qdRenderSelecting() {
+  const q = qd.questions[qd.currentIdx];
+  if (!q) return;
+  const allOptions = [...q.options, { label: '其它 (自定义输入)', description: '输入自定义文本' }];
+  $('qd-header-title').textContent = '❓ ' + q.header;
+  $('qd-progress').textContent = '(' + (qd.currentIdx + 1) + '/' + qd.questions.length + ')';
+  $('qd-question').textContent = q.question;
+  const sel = qd.selections[q.question] || [];
+
+  // Render options
+  const optsEl = $('qd-options');
+  optsEl.style.display = '';
+  optsEl.innerHTML = '';
+  for (let i = 0; i < allOptions.length; i++) {
+    const opt = allOptions[i];
+    const isFocused = i === qd.focusIdx;
+    const isSelected = sel.includes(opt.label);
+    const isOther = opt.label === '其它 (自定义输入)';
+    const div = document.createElement('div');
+    div.className = 'qd-opt' + (isFocused ? ' focused' : '') + (isSelected ? ' selected' : '') + (isOther ? ' other' : '');
+    div.dataset.idx = i;
+    div.innerHTML = '<span class="indicator">' + (isOther ? (isSelected ? '✎' : '✎') : q.multiSelect ? (isSelected ? '☑' : '☐') : isFocused ? '◉' : '○') + '</span><span class="label">' + escapeHtml(opt.label) + '</span>';
+    div.onclick = () => { qd.focusIdx = i; qdSelectOption(); };
+    div.onmouseenter = () => { qd.focusIdx = i; qdRender(); };
+    optsEl.appendChild(div);
+  }
+
+  // Description
+  $('qd-desc').style.display = '';
+  $('qd-desc').textContent = allOptions[qd.focusIdx]?.description || '';
+
+  // Hints
+  $('qd-hint').style.display = '';
+  $('qd-hint').textContent = q.multiSelect
+    ? '↑↓ 选择  Space 切换  ←→ 切换问题  Enter 确认  Esc 取消'
+    : '↑↓ 选择  Enter 确认  ←→ 切换问题  Esc 取消';
+
+  // Footer buttons
+  $('qd-cancel').style.display = '';
+  if (qd.currentIdx < qd.questions.length - 1) {
+    const selCur = qd.selections[qd.questions[qd.currentIdx].question] || [];
+    if (selCur.length > 0) {
+      $('qd-next').style.display = '';
+      $('qd-next').textContent = 'Next →';
+    }
+  } else {
+    const allAnswered = qd.questions.every(q2 => (qd.selections[q2.question] || []).length > 0);
+    if (allAnswered) {
+      $('qd-next').style.display = '';
+      $('qd-next').textContent = 'Review';
+    }
+  }
+}
+
+function qdRenderCustomInput() {
+  const q = qd.questions[qd.currentIdx];
+  $('qd-header-title').textContent = '✎ ' + q.header + ' - 自定义输入';
+  $('qd-progress').textContent = '';
+  $('qd-question').textContent = q.question;
+
+  $('qd-custom-area').classList.add('show');
+  $('qd-custom-hint').classList.add('show');
+  const input = $('qd-custom-input');
+  input.value = qd.customText;
+  setTimeout(() => input.focus(), 50);
+
+  $('qd-cancel').textContent = 'Back';
+}
+
+function qdRenderConfirming() {
+  $('qd-header-title').innerHTML = '✓ 确认你的回答';
+  $('qd-progress').textContent = '';
+  $('qd-question').style.display = 'none';
+
+  const area = $('qd-confirm-area');
+  area.classList.add('show');
+  area.innerHTML = '';
+  for (const q of qd.questions) {
+    const sel = qd.selections[q.question] || [];
+    const hasOther = sel.includes('其它 (自定义输入)');
+    const custom = qd.customInputs[q.question] || '';
+    const normalSel = sel.filter(s => s !== '其它 (自定义输入)');
+    const display = hasOther && custom ? escapeHtml(custom) : escapeHtml(normalSel.join(', ') || (hasOther ? '(空)' : '(未选择)'));
+    const item = document.createElement('div');
+    item.className = 'qd-confirm-item';
+    item.innerHTML = '<div class="q">[' + escapeHtml(q.header) + '] ' + escapeHtml(q.question) + '</div><div class="a">→ ' + display + '</div>';
+    area.appendChild(item);
+  }
+
+  $('qd-cancel').style.display = '';
+  $('qd-back').style.display = '';
+  $('qd-submit').style.display = '';
+}
+
+function qdSelectOption() {
+  const q = qd.questions[qd.currentIdx];
+  const allOptions = [...q.options, { label: '其它 (自定义输入)', description: '' }];
+  const opt = allOptions[qd.focusIdx];
+  const isOther = opt.label === '其它 (自定义输入)';
+
+  if (q.multiSelect) {
+    const prev = [...(qd.selections[q.question] || [])];
+    const idx = prev.indexOf(opt.label);
+    if (idx >= 0) prev.splice(idx, 1);
+    else prev.push(opt.label);
+    qd.selections[q.question] = prev;
+    qdRender();
+    return;
+  }
+
+  // Single select
+  if (isOther) {
+    qd.selections[q.question] = ['其它 (自定义输入)'];
+    qd.customText = qd.customInputs[q.question] || '';
+    qd.screen = 'customInput';
+    qdRender();
+    return;
+  }
+  qd.selections[q.question] = [opt.label];
+  qdAdvance();
+}
+
+function qdAdvance() {
+  if (qd.currentIdx < qd.questions.length - 1) {
+    // Check if current has "其它" selected and needs custom input
+    const sel = qd.selections[qd.questions[qd.currentIdx].question] || [];
+    if (sel.includes('其它 (自定义输入)')) {
+      qd.customText = qd.customInputs[qd.questions[qd.currentIdx].question] || '';
+      qd.screen = 'customInput';
+      qdRender();
+      return;
+    }
+    qd.currentIdx++;
+    qd.focusIdx = 0;
+    qdRender();
+  } else {
+    const allAnswered = qd.questions.every(q2 => (qd.selections[q2.question] || []).length > 0);
+    if (allAnswered) {
+      qd.screen = 'confirming';
+      qdRender();
+    }
+  }
+}
+
+function qdNext() {
+  if (qd.screen === 'confirming') { qdSubmit(); return; }
+  const q = qd.questions[qd.currentIdx];
+  const sel = qd.selections[q.question] || [];
+  if (sel.includes('其它 (自定义输入)')) {
+    qd.customText = qd.customInputs[q.question] || '';
+    qd.screen = 'customInput';
+    qdRender();
+    return;
+  }
+  qdAdvance();
+}
+
+function qdBack() {
+  if (qd.screen === 'confirming') {
+    qd.screen = 'selecting';
+    qd.currentIdx = qd.questions.length - 1;
+    qd.focusIdx = 0;
+    qdRender();
+  }
+}
+
+function qdCancel() {
+  if (qd.screen === 'customInput') {
+    qd.screen = 'selecting';
+    qdRender();
+    return;
+  }
+  // Cancel entire dialog
+  if (qd.dialogId) {
+    fetch('/question-answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: qd.dialogId, answers: {} }) }).catch(() => {});
+  }
+  qdClose();
+}
+
+function qdSubmit() {
+  const answers = {};
+  for (const q of qd.questions) {
+    const sel = qd.selections[q.question] || [];
+    if (sel.includes('其它 (自定义输入)')) {
+      answers[q.question] = qd.customInputs[q.question] || '';
+    } else {
+      answers[q.question] = sel.join(', ');
+    }
+  }
+  if (qd.dialogId) {
+    fetch('/question-answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: qd.dialogId, answers }) }).catch(() => {});
+  }
+  qdClose();
+}
+
+// Keyboard handler for question dialog
+document.addEventListener('keydown', (e) => {
+  const overlay = $('qd-overlay');
+  if (!overlay.classList.contains('show')) return;
+  if (qd.screen === 'customInput' && document.activeElement === $('qd-custom-input')) {
+    if (e.key === 'Escape') { e.preventDefault(); qdCancel(); return; }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const q = qd.questions[qd.currentIdx];
+      qd.customInputs[q.question] = $('qd-custom-input').value;
+      qd.customText = '';
+      qd.screen = 'selecting';
+      // Check if all answered and last question
+      const allAnswered = qd.questions.every(q2 => (qd.selections[q2.question] || []).length > 0);
+      if (allAnswered && qd.currentIdx === qd.questions.length - 1) {
+        qd.screen = 'confirming';
+      }
+      qdRender();
+      return;
+    }
+    return; // Let normal typing happen
+  }
+  if (e.key === 'Escape') { e.preventDefault(); qdCancel(); return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); qd.focusIdx = Math.min(qd.questions[qd.currentIdx].options.length, qd.focusIdx + 1); qdRender(); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); qd.focusIdx = Math.max(0, qd.focusIdx - 1); qdRender(); return; }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); if (qd.currentIdx > 0) { qd.currentIdx--; qd.focusIdx = 0; qdRender(); } return; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); if (qd.currentIdx < qd.questions.length - 1) { const q = qd.questions[qd.currentIdx]; const sel = qd.selections[q.question] || []; if (sel.length > 0) { qd.currentIdx++; qd.focusIdx = 0; qdRender(); } } return; }
+  if (e.key === 'Enter') { e.preventDefault(); qdSelectOption(); return; }
+  if (e.key === ' ') { e.preventDefault(); qdSelectOption(); return; }
+});
+
 function setInputEnabled(en) {
   inputEl.disabled = !en;
   sendBtn.disabled = !en;
@@ -304,6 +697,11 @@ function connect() {
     state.debug = d.debug === true;
     setStatus('connected', 'Ready');
     setInputEnabled(true);
+    modeEl.className = '';
+    $('bg-tasks').innerHTML = '';
+    $('bg-tasks').classList.remove('show');
+    $('status-bar').innerHTML = '';
+    $('status-bar').classList.remove('show');
   });
 
   es.addEventListener('session:ready', () => {
@@ -352,11 +750,13 @@ function connect() {
     const card = document.createElement('div');
     card.className = 'tool-card running';
     card.dataset.toolId = d.id;
+    const toolName = d.displayName || d.toolName;
     const argsStr = d.args && Object.keys(d.args).length > 0 ? JSON.stringify(d.args, null, 2) : '';
+    const argsPreview = d.argsPreview || '';
     card.innerHTML = `
       <div class="tool-card-header" onclick="toggleToolDetail(this.parentElement)">
         <div class="tool-spinner"></div>
-        <span class="tool-name">${escapeHtml(d.toolName)}</span>
+        <span class="tool-name">${escapeHtml(toolName)}<span class="tool-args-preview">${escapeHtml(argsPreview)}</span></span>
         <span class="tool-status">running</span>
         <span class="tool-arrow">▸</span>
       </div>
@@ -379,6 +779,11 @@ function connect() {
     const sec = card.querySelector('.tool-result-section');
     const content = card.querySelector('.tool-result-content');
     if (sec && content) { sec.style.display = ''; content.textContent = d.message || d.status || ''; }
+  });
+
+  es.addEventListener('tool:definitions', (e) => {
+    const d = JSON.parse(e.data);
+    state.toolDefinitions = d.definitions || [];
   });
 
   es.addEventListener('status', (e) => {
@@ -414,11 +819,27 @@ function connect() {
     const card = document.createElement('div');
     card.className = 'confirm-card';
     card.dataset.confirmId = d.id;
+    const toolLabel = escapeHtml(d.displayName || d.toolName);
+    let diffHtml = '';
+    if (d.diff && d.diff.length > 0) {
+      diffHtml = '<div class="tool-section"><div class="tool-section-label">Diff</div><div class="tool-section-content">';
+      for (const h of d.diff) {
+        for (const l of h.lines || []) {
+          const cl = l.type === 'add' ? 'color:#51cf66' : l.type === 'remove' ? 'color:#ff6b6b' : 'color:var(--text-muted)';
+          const prefix = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' ';
+          diffHtml += `<span style="${cl}">${escapeHtml(prefix + l.content)}</span>\n`;
+        }
+      }
+      diffHtml += '</div></div>';
+    }
+    const fileHtml = d.filePath ? `<div class="confirm-details">File: ${escapeHtml(d.filePath)}</div>` : '';
     card.innerHTML = `
       <div class="confirm-header"><span class="confirm-icon">⚠</span><span class="confirm-title">Authorization Required</span></div>
-      <div class="confirm-tool">${escapeHtml(d.toolName)}</div>
+      <div class="confirm-tool">${toolLabel}</div>
       <div class="confirm-message">${escapeHtml(d.message)}</div>
+      ${fileHtml}
       ${d.details ? `<div class="confirm-details">${escapeHtml(d.details)}</div>` : ''}
+      ${diffHtml}
       <div class="confirm-buttons">
         <button class="confirm-btn deny">Deny</button>
         <button class="confirm-btn allow">Allow</button>
@@ -429,6 +850,49 @@ function connect() {
     if (denyBtn) denyBtn.addEventListener('click', () => sendConfirm(d.id, false));
     msgArea.appendChild(card);
     scrollBottom();
+  });
+
+  es.addEventListener('question:dialog', (e) => {
+    const d = JSON.parse(e.data);
+    qdOpen(d);
+  });
+
+  es.addEventListener('background:task', (e) => {
+    const d = JSON.parse(e.data);
+    const bar = $('bg-tasks');
+    // Remove existing task with same id
+    const existing = bar.querySelector(`[data-task-id="${d.taskId}"]`);
+    if (existing) existing.remove();
+    if (d.taskStatus === 'started') {
+      const el = document.createElement('span');
+      el.className = 'bg-task';
+      el.dataset.taskId = d.taskId;
+      el.innerHTML = `<span class="dot running"></span> ${escapeHtml(d.message || d.taskId)}`;
+      bar.appendChild(el);
+    } else if (d.taskStatus === 'completed' || d.taskStatus === 'error') {
+      // Show briefly then remove
+      const el = document.createElement('span');
+      el.className = 'bg-task';
+      el.dataset.taskId = d.taskId;
+      el.innerHTML = `<span class="dot ${d.taskStatus}"></span> ${escapeHtml(d.message || d.taskId)}`;
+      bar.appendChild(el);
+      setTimeout(() => { const e2 = bar.querySelector(`[data-task-id="${d.taskId}"]`); if (e2) e2.remove(); bar.classList.toggle('show', bar.children.length > 0); }, 5000);
+    }
+    bar.classList.toggle('show', bar.children.length > 0);
+  });
+
+  es.addEventListener('status:bar', (e) => {
+    const d = JSON.parse(e.data);
+    const bar = $('status-bar');
+    bar.innerHTML = '';
+    if (d.segments && typeof d.segments === 'object') {
+      let count = 0;
+      for (const [key, value] of Object.entries(d.segments)) {
+        if (value) { bar.innerHTML += `<span class="status-seg">${escapeHtml(value)}</span>`; count++; }
+      }
+      bar.classList.toggle('show', count > 0);
+    }
+    updateMode(d.segments);
   });
 
   es.addEventListener('user:input', (e) => {
@@ -466,7 +930,10 @@ async function sendConfirm(id, approved) {
   if (card) card.remove();
 }
 
-inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(); } });
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); toggleMode(); return; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendInput(); }
+});
 connect();
 // CDN 库加载完成后重渲染当前消息（本地优先，CDN fallback 时的保险）
 (function pollMdLibs() {
