@@ -29,10 +29,8 @@
   /* ── Mode indicator ── */
   #mode-indicator { display: none; font-size: 12px; font-weight: 600; margin-left: auto; margin-right: 8px; cursor: pointer; user-select: none; padding: 2px 8px; border-radius: 4px; }
   #mode-indicator.show { display: inline; }
-  #mode-indicator.plan { color: #f59e0b; }
-  #mode-indicator.plan:hover { background: rgba(245,158,11,0.1); }
-  #mode-indicator.normal { color: #9ca3af; }
-  #mode-indicator.normal:hover { background: rgba(156,163,175,0.1); }
+  #mode-indicator.plan { color: #fbbf24; }
+  #mode-indicator.plan:hover { background: rgba(251,191,36,0.12); }
 
   /* ── Welcome placeholder ── */
   #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--text-muted); user-select: none; }
@@ -370,11 +368,15 @@ function setStatus(stateClass, text) {
 // ── Mode indicator ──
 const modeEl = $('mode-indicator');
 function updateMode(segments) {
-  const modeText = segments?.mode || '';
-  const isPlan = modeText.includes('PLAN');
-  modeEl.className = 'show ' + (isPlan ? 'plan' : 'normal');
-  modeEl.textContent = isPlan ? '● PLAN [Shift+Tab]' : '○ normal [Shift+Tab]';
-  modeEl.title = isPlan ? 'Click or Shift+Tab to switch to normal mode' : 'Click or Shift+Tab to switch to plan mode';
+  const modeText = (segments?.mode || '').toLowerCase();
+  const isPlan = modeText.includes('plan');
+  if (isPlan) {
+    modeEl.className = 'show plan';
+    modeEl.textContent = '● PLAN (shift+tab)';
+    modeEl.title = 'Click or Shift+Tab to switch to normal mode';
+  } else {
+    modeEl.className = '';
+  }
 }
 async function toggleMode() {
   try { await fetch('/mode-toggle', { method: 'POST', body: '{}' }); } catch {}
@@ -888,6 +890,7 @@ function connect() {
     if (d.segments && typeof d.segments === 'object') {
       let count = 0;
       for (const [key, value] of Object.entries(d.segments)) {
+        if (key === 'mode') continue; // mode 单独显示在 header 中
         if (value) { bar.innerHTML += `<span class="status-seg">${escapeHtml(value)}</span>`; count++; }
       }
       bar.classList.toggle('show', count > 0);

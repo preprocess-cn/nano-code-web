@@ -74,7 +74,14 @@ export class NanoCodeWebServer {
   /** 向所有 SSE 客户端广播事件 */
   broadcast(type: string, data: Record<string, unknown>): void {
     const msg = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const c of this.clients) c.res.write(msg);
+    // 倒序遍历，方便在写失败时移除失效客户端
+    for (let i = this.clients.length - 1; i >= 0; i--) {
+      try {
+        this.clients[i].res.write(msg);
+      } catch {
+        this.clients.splice(i, 1);
+      }
+    }
   }
 
   /** 写入大内容到临时文件，返回 URL */
@@ -139,8 +146,7 @@ export class NanoCodeWebServer {
       clearInterval(keepAlive);
       this.clients = this.clients.filter(c => c.id !== client.id);
     };
-    // SSE 连接永不结束，需要用 socket close 检测客户端断开
-    _req.socket?.on('close', onClose);
+    res.on('close', onClose);
   }
 
   private handleInput(req: http.IncomingMessage, res: http.ServerResponse): void {

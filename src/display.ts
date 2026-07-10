@@ -167,6 +167,11 @@ function createWebDisplay() {
     if (isReady) {
       client.res.write('event: session:ready\ndata: {}\n\n');
     }
+    // 新客户端连入时发送当前 mode 状态（兜底，以防历史缓冲区中无 status:bar）
+    const curMode = registry?.store?.get(SK_MODE) || 'normal';
+    if (curMode === 'plan') {
+      client.res.write(`event: status:bar\ndata: ${JSON.stringify({ segments: { mode: '● PLAN' } })}\n\n`);
+    }
   });
 
   // ── SIGINT 处理（Ctrl+C 退出提示状态）──
@@ -307,6 +312,9 @@ function createWebDisplay() {
           registry.store.set(SK_PRE_MODE, currentMode);
           registry.store.set(SK_MODE, 'plan');
         }
+        // 通知所有在线客户端 mode 变化
+        const newMode = registry.store.get(SK_MODE) || 'normal';
+        server.broadcast('status:bar', { segments: { mode: newMode === 'plan' ? '● PLAN' : '○ normal' } });
       });
 
       // 注册 output handler：将命令 stdout/stderr 转发为 SSE，避免直写终端

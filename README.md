@@ -85,6 +85,14 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `greeting` | `string` | 会话欢迎语 |
 | `hasTools` | `boolean` | 是否有可用工具 |
 
+## 多标签页同步
+
+多个浏览器标签页连接同一后端时，所有页面的消息和状态保持同步：
+
+- **消息同步**：`user:input`、`stream:chunk` 等事件通过 `broadcast()` 发送给所有连接的 SSE 客户端
+- **Plan mode 同步**：切换 mode 时广播 `status:bar` 事件给所有在线客户端；新客户端连入时查询后端当前 mode 并直接推送
+- **广播健壮性**：`broadcast()` 使用倒序遍历 + try-catch 保护，单个客户端写失败不影响其他客户端，失效客户端自动移除
+
 ## 事件流
 
 | SSE 事件 | 方向 | 说明 |
@@ -117,6 +125,12 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 前端断开后重新打开时，后端会将已广播的历史事件（`stream:chunk`、`user:input`、`tool:call/result`、`status`、`agent:turn_start/end`、`error`）通过 `onConnect` 回调重新发送给新客户端。缓冲区上限 500 条，`/clear` 或新 session 时自动清空。
 
 配合 nano-code 的 `--continue` / `-c` 标志使用时，`restoreSession()` 会通过 DisplayPlugin 回放已保存的对话消息，nano-code-web 将其广播为 SSE 事件并同时写入历史缓冲区，前端刷新后仍可看到历史。
+
+### 广播容错
+
+`broadcast()` 使用倒序遍历 + try-catch：
+- 单个客户端写失败（连接已关闭但尚未清理）不会阻塞其他客户端
+- 失效客户端自动从广播列表移除
 
 ### 工具调用双向广播
 
