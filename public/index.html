@@ -854,9 +854,19 @@ function connect() {
     scrollBottom();
   });
 
+  es.addEventListener('confirmation:resolved', (e) => {
+    const d = JSON.parse(e.data);
+    const card = document.querySelector(`.confirm-card[data-confirm-id="${d.id}"]`);
+    if (card) card.remove();
+  });
+
   es.addEventListener('question:dialog', (e) => {
     const d = JSON.parse(e.data);
     qdOpen(d);
+  });
+
+  es.addEventListener('question:resolved', () => {
+    qdClose();
   });
 
   es.addEventListener('background:task', (e) => {

@@ -264,10 +264,12 @@ function createWebDisplay() {
         const id = 'cf_' + (++confirmIdCounter) + '_' + Date.now().toString(36);
         return new Promise(resolve => {
           confirmState = { id, resolve };
-          server.broadcast('confirmation:request', {
+          const confirmData = {
             id, toolName: req.toolName, displayName: req.displayName, message: req.message,
             details: req.details, diff: req.diff, filePath: req.filePath, agentName,
-          });
+          };
+          server.broadcast('confirmation:request', confirmData);
+          pushHistory('confirmation:request', confirmData);
         });
       });
 
@@ -277,6 +279,8 @@ function createWebDisplay() {
           const r = confirmState.resolve;
           confirmState = null;
           r(approved);
+          server.broadcast('confirmation:resolved', { id });
+          pushHistory('confirmation:resolved', { id });
         }
       });
 
@@ -289,6 +293,7 @@ function createWebDisplay() {
             resolve({ status: 'success', data: JSON.stringify({ questions, answers }) });
           };
           server.broadcast('question:dialog', { id, questions });
+          pushHistory('question:dialog', { id, questions });
         });
       });
 
@@ -298,6 +303,8 @@ function createWebDisplay() {
           const r = questionDialogResolve;
           questionDialogResolve = null;
           r(answers);
+          server.broadcast('question:resolved', { id });
+          pushHistory('question:resolved', { id });
         }
       });
 
