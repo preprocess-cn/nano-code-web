@@ -1,6 +1,54 @@
 # ROADMAP
 
-## v0.1.1 — 当前版本
+## v0.1.2 — 当前版本
+
+### 新增功能
+
+- **CSS/JS 提取为外部文件**
+  - `index.html` 中的内联 CSS/JS 拆分为独立文件：`style.css`、`app.js`、`dialog.js`
+  - `dialog.js` 模块化问询对话框（三屏：选择 → 自定义输入 → 确认），与主逻辑分离
+  - 构建脚本 `npm run build` 自动复制前端文件到 `dist/`
+
+- **通用静态文件服务**
+  - `server.ts` 新增 `resolvePublicFile()`/`serveStaticFile()`，自动从 `public/` 或 `dist/` 目录匹配并提供任意静态文件
+  - `GET /vendor/*` 路由服务第三方 JS/CSS 库（构建时复制到 `dist/vendor/`）
+
+- **Markdown 渲染库本地化**（离线可用）
+  - `markdown-it`、`DOMPurify`、`highlight.js` 从 CDN 改为 npm 依赖
+  - `scripts/copy-vendor.mjs` 构建脚本将运行时库从 `node_modules/` 或本地缓存复制到 `dist/vendor/`
+  - highlight.js 支持本地 vendor 目录缓存，CDN 下载失败时自动 fallback 为 stub
+
+- **多标签页对话框全 tab 响应**
+  - 一个 tab 回答问询/确认后，其他 tab 仍然可以操作
+  - 对话框按 id 匹配，每个 tab 的交互状态独立
+
+- **多标签页 plan mode 同步**
+  - 切换 mode 时通过 `broadcast('status:bar', ...)` 通知所有在线客户端
+  - 新客户端连入时自动查询当前 mode 并推送
+
+### 修复
+
+- ~~`_req.socket.close` 在 HTTP keep-alive 下误触导致 SSE 连接被提前清理~~
+  - 根因：`_req.socket` 的 `close` 事件在 socket 复用时不触发或误触发
+  - 修复：改为 `res.on('close', ...)` 精确监听响应流关闭
+
+- ~~`broadcast()` 写失败阻断其他客户端~~
+  - 根因：无 try-catch，某个失效客户端 `res.write()` 抛异常中断循环
+  - 修复：倒序遍历 + try-catch，写失败自动移除失效客户端
+
+- ~~助手消息气泡底部多一行空白~~
+  - 根因：LLM 输出末尾 `\n` 与 `white-space: pre-wrap` 组合导致多余空白行
+  - 修复：前端渲染时对末尾 `\n` 做 strip
+
+- ~~工具卡片 rejected 状态 spinner 仍旋转~~
+  - 根因：`tool:result` 的 `rejected` 状态未关闭动画
+  - 修复：前端检查 `rejected` 状态并停止 spinner
+
+### 已知 Bug
+
+> 无已知 Bug
+
+## v0.1.1 — 历史版本
 
 ### 已完成
 

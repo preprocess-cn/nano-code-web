@@ -1,6 +1,6 @@
 # nano-code-web
 
-nano-code 的 Web 显示插件。通过 SSE（Server-Sent Events）将 nano-code 的 DisplayPlugin 事件推送到浏览器前端，提供图形化交互界面。
+nano-code 的 Web 显示插件（v0.1.2）。通过 SSE（Server-Sent Events）将 nano-code 的 DisplayPlugin 事件推送到浏览器前端，提供图形化交互界面。
 
 ## Architecture
 
@@ -17,29 +17,24 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - `POST /confirm` — 处理前端授权确认（Allow/Deny）
    - `POST /question-answer` — 处理前端问询对话框答案提交
    - `POST /mode-toggle` — 切换 plan/normal 模式（Shift+Tab）
+   - `GET /` — 前端页面（先查找 `public/` 或 `dist/` 下同路径文件，存在即返回，否则返回 `index.html`）
+   - `GET /vendor/*` — 第三方 JS/CSS 库
    - `GET /health` — 健康检查
    - `GET /web-files/*` — 临时文件服务
-   - `GET /` — 前端页面
 
 2. **`src/display.ts`** — DisplayPlugin 实现
    - 将 nano-code 的 `onStart/onStreamChunk/onToolCall/onStatus` 等事件广播为 SSE
    - 通过 NanoPlugin `onBeforeToolCall/onAfterToolCall` 追踪工具调用 ID
-   - `ThinkFilter` — 按 `showThink` 配置过滤 `<think>...</think>` 内容（支持跨 chunk 分割、处理残留 `</think>`）
-   - `ToolCallBroadcaster` — 工具调用事件去重广播（NanoPlugin + DisplayPlugin 双向路径）
-   - `注册 ask_user_question 交互式 handler` — 将 LLM 提问转发为前端对话框 SSE 事件，Promise 等待回答
-   - `onBackgroundTask` — 后台任务状态广播（started/completed/error）
-   - `onModeToggle` — store 级别 plan/normal 模式切换（Shift+Tab/点击/命令）
 
-3. **`public/index.html`** — 单页前端
-   - `EventSource` 接收 SSE，渲染消息气泡、工具调用卡片、thinking 动画、授权确认卡片
+3. **`public/index.html`** + **`public/app.js`** + **`public/dialog.js`** + **`public/style.css`** — 单页前端（v0.1.2 将 CSS/JS 从内联提取为独立文件）
    - Markdown 渲染（`markdown-it` + `highlight.js` 语法高亮 + `DOMPurify` 安全消毒）
    - 流式输出优化：debounce（150ms）+ 代码块闭合检测（``` 成对时立即渲染）
    - 工具卡片点击展开/收拢（参数 + 返回结果）
-   - 问询对话框（三屏：选择 → 自定义输入 → 确认，Esc 取消）
+   - 问询对话框（`dialog.js` 模块，三屏：选择 → 自定义输入 → 确认，Esc 取消）
    - 后台任务状态条（`background:task` 事件驱动，自动消隐）
    - Plan mode 指示器（`● PLAN`/`○ normal`，Shift+Tab 切换）
    - 状态栏（`status:bar` 事件驱动，显示 mode/tasks 等段落）
-   - 纯 vanilla JS，无框架依赖，CDN 延迟加载渲染库
+   - 纯 vanilla JS，无框架依赖；第三方库（markdown-it、DOMPurify、highlight.js）通过构建脚本复制到 `dist/vendor/` 本地加载，无需 CDN
 
 ## Quick Start
 
@@ -50,7 +45,7 @@ npm install
 npm run build
 ```
 
-构建输出 `dist/display.js` + `dist/index.html`。
+构建输出 `dist/display.js` + `dist/index.html` + `dist/app.js` + `dist/dialog.js` + `dist/style.css` + `dist/vendor/`（markdown-it、DOMPurify、highlight.js 运行时库）。
 
 ### 配置 nano-code
 
@@ -181,13 +176,19 @@ npx tsx --test tests/tool-card-scroll.test.ts
 │   ├── server.ts        # HTTP/SSE 服务器
 │   └── tool-display.ts  # 工具名/参数格式化
 ├── public/
-│   └── index.html       # 前端页面（vanilla JS）
+│   ├── index.html       # 前端页面骨架
+│   ├── app.js           # 前端主逻辑（消息渲染、事件处理）
+│   ├── dialog.js        # 问询对话框模块（三屏：选择→输入→确认）
+│   └── style.css        # 前端样式表
+├── scripts/
+│   └── copy-vendor.mjs  # 构建时将 markdown-it/DOMPurify/highlight.js 复制到 dist/vendor/
 ├── tests/
 │   ├── display.test.ts
 │   ├── server.test.ts
 │   ├── frontend.test.ts
 │   └── tool-card-scroll.test.ts
-├── dist/             # 构建输出
+├── dist/             # 构建输出（含 vendor/ 第三方库）
+├── vendor/           # highlight.js CDN 缓存（可选，构建时自动下载）
 ├── .nano-code.yaml   # nano-code 插件配置
 ├── README.md
 └── ROADMAP.md
