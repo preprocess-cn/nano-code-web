@@ -18,6 +18,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
