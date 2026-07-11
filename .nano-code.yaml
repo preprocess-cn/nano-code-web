@@ -1,2 +1,3 @@
 display:
-  plugin: ./dist/display.js
+  plugin: nano-code-web
+  enabled: true

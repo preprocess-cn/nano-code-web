@@ -115,6 +115,11 @@ export class NanoCodeWebServer {
         if (req.method === 'GET' && sUrl.pathname === '/health') return this.handleHealth(res);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/web-files/')) return this.handleFile(req, res, sUrl.pathname);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/vendor/')) return this.handleVendor(res, sUrl.pathname);
+        // 通用静态文件: 在 public/ 或 dist/ 下查找，存在即返回，否则走 index.html
+        if (req.method === 'GET') {
+          const found = this.resolvePublicFile(sUrl.pathname);
+          if (found) return this.serveStaticFile(res, sUrl.pathname, found);
+        }
         return this.handleIndex(res);
       } catch {
         res.writeHead(500);
@@ -273,6 +278,43 @@ export class NanoCodeWebServer {
       'Cache-Control': 'public, max-age=3600',
     });
     res.end(content);
+  }
+
+  private resolvePublicFile(pathname: string): string | null {
+    const fileName = pathname.replace(/^\//, '');
+    if (!fileName) return null;
+    const scriptDir = new URL('.', import.meta.url).pathname;
+    const candidates = [
+      path.join(scriptDir, fileName),
+      path.join(scriptDir, '..', 'public', fileName),
+      path.join(scriptDir, '..', '..', 'public', fileName),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.statSync(p).isFile()) return p;
+      } catch { /* try next */ }
+    }
+    return null;
+  }
+
+  private serveStaticFile(res: http.ServerResponse, pathname: string, filePath: string): void {
+    const ext = path.extname(pathname);
+    const mime: Record<string, string> = {
+      '.js': 'application/javascript; charset=utf-8',
+      '.css': 'text/css; charset=utf-8',
+      '.html': 'text/html; charset=utf-8',
+      '.png': 'image/png',
+      '.svg': 'image/svg+xml',
+      '.ico': 'image/x-icon',
+      '.woff2': 'font/woff2',
+      '.json': 'application/json',
+    };
+    res.writeHead(200, {
+      'Content-Type': mime[ext] || 'application/octet-stream',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=3600',
+    });
+    fs.createReadStream(filePath).pipe(res);
   }
 
   private handleIndex(res: http.ServerResponse): void {

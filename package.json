@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/display.js",
   "scripts": {
-    "build": "tsc && cp public/index.html dist/index.html && node scripts/copy-vendor.mjs",
+    "build": "tsc && cp public/index.html dist/index.html && cp public/app.js dist/app.js && cp public/dialog.js dist/dialog.js && cp public/style.css dist/style.css && node scripts/copy-vendor.mjs",
     "dev": "tsc --watch",
     "test": "tsx --test --test-force-exit tests/*.test.ts"
   },
