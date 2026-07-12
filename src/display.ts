@@ -375,6 +375,7 @@ function createWebDisplay() {
     },
 
     prompt(): Promise<string | null> {
+      cleanupPrompt();
       return new Promise(resolve => {
         promptResolve = resolve;
         isReady = true;
@@ -474,6 +475,17 @@ function createWebDisplay() {
       });
     },
 
+    onNotify(notification: { source: string; message: string } | null): void {
+      if (notification) {
+        server.broadcast('notify', {
+          source: notification.source,
+          message: notification.message,
+        });
+      } else {
+        server.broadcast('notify:clear', {});
+      }
+    },
+
     onAgentTurnStart(event: any): void {
       const data = { agentName: event.agentName };
       server.broadcast('agent:turn_start', data);
@@ -490,6 +502,18 @@ function createWebDisplay() {
       server.broadcast('state:snapshot', {
         agentName: snapshot.agentName,
         messageCount: snapshot.messageCount,
+      });
+    },
+
+    onContextAnalysis(analysis: any): void {
+      server.broadcast('context:analysis', {
+        modelName: analysis.modelName,
+        contextWindow: analysis.contextWindow,
+        totalTokens: analysis.totalTokens,
+        usageSource: analysis.usageSource,
+        percentage: analysis.percentage,
+        dimensions: analysis.dimensions,
+        freeTokens: analysis.freeTokens,
       });
     },
 
