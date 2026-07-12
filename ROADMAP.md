@@ -26,6 +26,12 @@
   - 切换 mode 时通过 `broadcast('status:bar', ...)` 通知所有在线客户端
   - 新客户端连入时自动查询当前 mode 并推送
 
+- **浮动 Toast 通知**
+  - `notify` 消息从 Header 右上角改为页面固定定位的浮动 Toast 容器
+  - 绿色左边框、滑入/淡出动画、4 秒自动消失、点击立即关闭
+  - 最多同时显示 3 条，超出则移除最早的通知
+  - `notify:clear` 事件清空所有 Toast，彻底脱离 Header 布局流
+
 ### 修复
 
 - ~~`_req.socket.close` 在 HTTP keep-alive 下误触导致 SSE 连接被提前清理~~

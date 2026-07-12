@@ -34,6 +34,7 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - 后台任务状态条（`background:task` 事件驱动，自动消隐）
    - Plan mode 指示器（`● PLAN`/`○ normal`，Shift+Tab 切换）
    - 状态栏（`status:bar` 事件驱动，显示 mode/tasks 等段落）
+   - 浮动 Toast 通知（右上角，自动消失，支持堆叠与点击关闭）
    - 纯 vanilla JS，无框架依赖；第三方库（markdown-it、DOMPurify、highlight.js）通过构建脚本复制到 `dist/vendor/` 本地加载，无需 CDN
 
 ## Quick Start
@@ -105,6 +106,8 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `agent:turn_end` | 后端 → 前端 | Agent 轮次结束 |
 | `confirmation:request` | 后端 → 前端 | 授权确认请求（Allow/Deny） |
 | `question:dialog` | 后端 → 前端 | 问询对话框（LLM 向用户提问） |
+| `notify` | 后端 → 前端 | 通知消息（浮动 Toast） |
+| `notify:clear` | 后端 → 前端 | 清除所有通知 |
 | `background:task` | 后端 → 前端 | 后台任务状态（started/completed/error） |
 | `status:bar` | 后端 → 前端 | 状态栏段落（mode/tasks 等） |
 | `user:input` | 后端 → 前端 | 用户输入（全局广播，用于历史重放） |

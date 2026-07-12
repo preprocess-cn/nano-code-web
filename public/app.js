@@ -10,6 +10,41 @@ const cancelBtn = $('cancel-btn');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
 const thinkingEl = $('thinking');
+// Toast 通知容器（浮动在页面右上角）
+const toastContainer = document.createElement('div');
+toastContainer.id = 'toast-container';
+document.body.appendChild(toastContainer);
+
+let toastIdCounter = 0;
+const TOAST_DURATION = 4000;
+
+function showToast(message) {
+  const id = ++toastIdCounter;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.dataset.toastId = id;
+  el.textContent = message;
+  el.addEventListener('click', () => removeToast(el));
+  toastContainer.appendChild(el);
+
+  const timer = setTimeout(() => removeToast(el), TOAST_DURATION);
+  el._timer = timer;
+
+  while (toastContainer.children.length > 3) {
+    removeToast(toastContainer.children[0]);
+  }
+}
+
+function removeToast(el) {
+  if (!el || el.classList.contains('fade-out')) return;
+  clearTimeout(el._timer);
+  el.classList.add('fade-out');
+  setTimeout(() => el.remove(), 300);
+}
+
+function clearAllToasts() {
+  Array.from(toastContainer.children).forEach(removeToast);
+}
 
 function escapeHtml(s) {
   const d = document.createElement('div');
@@ -379,6 +414,20 @@ function connect() {
       bar.classList.toggle('show', count > 0);
     }
     updateMode(d.segments);
+  });
+
+  es.addEventListener('notify', (e) => {
+    const d = JSON.parse(e.data);
+    showToast(d.message);
+  });
+
+  es.addEventListener('notify:clear', () => {
+    clearAllToasts();
+  });
+
+  es.addEventListener('context:analysis', (e) => {
+    const d = JSON.parse(e.data);
+    addMsg('system', `[context] ${Math.round(d.percentage)}% used (${d.totalTokens}/${d.contextWindow}, free: ${d.freeTokens})`);
   });
 
   es.addEventListener('user:input', (e) => {

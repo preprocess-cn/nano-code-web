@@ -25,6 +25,13 @@ header h1 { font-size: 15px; font-weight: 600; color: var(--text); letter-spacin
 #mode-indicator.plan { color: #fbbf24; }
 #mode-indicator.plan:hover { background: rgba(251,191,36,0.12); }
 
+/* ── Toast notifications ── */
+#toast-container { position: fixed; top: 12px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { pointer-events: auto; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--success); border-radius: 8px; padding: 10px 16px; font-size: 13px; color: var(--text); max-width: 360px; word-break: break-word; box-shadow: 0 4px 16px rgba(0,0,0,0.3); animation: toast-slide-in 0.25s ease-out; cursor: pointer; user-select: none; }
+.toast.fade-out { animation: toast-fade-out 0.3s ease-in forwards; }
+@keyframes toast-slide-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toast-fade-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+
 /* ── Welcome placeholder ── */
 #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; color: var(--text-muted); user-select: none; }
 #welcome.hidden { display: none; }
