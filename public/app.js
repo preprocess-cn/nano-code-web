@@ -1,5 +1,5 @@
 // ── State ──
-const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false, toolDefinitions: [] };
+const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false, toolDefinitions: [], thinkMsg: null, fullAccumulator: '' };
 
 const $ = id => document.getElementById(id);
 const msgArea = $('messages');
@@ -53,6 +53,42 @@ function escapeHtml(s) {
 }
 
 function scrollBottom() { msgArea.scrollTop = msgArea.scrollHeight; }
+
+/** 解析 <think>...</think> 标签，返回 { text, think } 段数组 */
+function parseThinkSegments(text) {
+  const segments = [];
+  let remaining = text;
+  let inThink = false;
+  while (remaining.length > 0) {
+    if (!inThink) {
+      const closeIdx = remaining.indexOf('</think>');
+      const openIdx = remaining.indexOf('<think>');
+      // 孤立的 </think>（无前置 <think>）视为 think 段结束
+      if (closeIdx !== -1 && (openIdx === -1 || closeIdx < openIdx)) {
+        if (closeIdx > 0) segments.push({ text: remaining.slice(0, closeIdx), think: true });
+        remaining = remaining.slice(closeIdx + 8);
+        continue;
+      }
+      if (openIdx === -1) {
+        segments.push({ text: remaining, think: false });
+        break;
+      }
+      if (openIdx > 0) segments.push({ text: remaining.slice(0, openIdx), think: false });
+      remaining = remaining.slice(openIdx + 7);
+      inThink = true;
+    } else {
+      const idx = remaining.indexOf('</think>');
+      if (idx === -1) {
+        segments.push({ text: remaining, think: true });
+        break;
+      }
+      if (idx > 0) segments.push({ text: remaining.slice(0, idx), think: true });
+      remaining = remaining.slice(idx + 8);
+      inThink = false;
+    }
+  }
+  return segments;
+}
 
 // ── Markdown 渲染（惰性初始化，CDN defer 加载完成后可用） ──
 let _md = null;
@@ -203,6 +239,8 @@ function connect() {
     welcomeEl.classList.remove('hidden');
     state.currentMsg = null;
     state.currentRawText = '';
+    state.thinkMsg = null;
+    state.fullAccumulator = '';
     if (state.renderTimer) { clearTimeout(state.renderTimer); state.renderTimer = null; }
     state.toolCards.clear();
     state.showThink = d.showThink === true;
@@ -236,6 +274,59 @@ function connect() {
 
   es.addEventListener('stream:chunk', (e) => {
     const d = JSON.parse(e.data);
+    if (!d.text) return;
+
+    if (state.showThink) {
+      state.fullAccumulator += d.text;
+      const segments = parseThinkSegments(state.fullAccumulator);
+      let thinkText = '', normalText = '';
+      for (const seg of segments) {
+        if (seg.think) thinkText += seg.text;
+        else normalText += seg.text;
+      }
+
+      // Think 消息
+      if (thinkText) {
+        showThinking(false);
+        welcomeEl.classList.add('hidden');
+        msgArea.classList.add('show');
+        if (!state.thinkMsg) {
+          const el = document.createElement('div');
+          el.className = 'msg think';
+          msgArea.appendChild(el);
+          state.thinkMsg = el;
+        }
+        const md = renderMarkdown(thinkText);
+        state.thinkMsg.innerHTML = md || escapeHtml(thinkText);
+      } else if (state.thinkMsg) {
+        state.thinkMsg.remove();
+        state.thinkMsg = null;
+      }
+
+      // 正常文本
+      if (normalText) {
+        if (!state.currentMsg) {
+          welcomeEl.classList.add('hidden');
+          msgArea.classList.add('show');
+          state.currentMsg = addMsg('assistant', '');
+        }
+        state.currentRawText = normalText;
+        state.currentMsg.innerHTML = escapeHtml(normalText.replace(/\n+$/, ''));
+        scrollBottom();
+        const markers = normalText.match(/```/g);
+        if (markers && markers.length % 2 === 0 && markers.length > 0) {
+          clearTimeout(state.renderTimer);
+          state.renderTimer = null;
+          state.currentMsg.innerHTML = renderStreaming(normalText);
+        } else {
+          scheduleRender();
+        }
+      }
+      scrollBottom();
+      return;
+    }
+
+    // ── showThink=false：原始逻辑（服务端已通过 ThinkFilter 剥离 think 标签）──
     if (!state.currentMsg) {
       if (!d.text.trim()) return;
       state.currentMsg = addMsg('assistant', '');
@@ -300,7 +391,7 @@ function connect() {
   es.addEventListener('status', (e) => {
     const d = JSON.parse(e.data);
     if (d.level === 'status' && d.message === 'thinking') { if (state.showThink) showThinking(true); setProcessing(true); }
-    else if (d.level === 'status' && d.message === 'end') { renderImmediate(); showThinking(false); setProcessing(false); state.currentMsg = null; }
+    else if (d.level === 'status' && d.message === 'end') { renderImmediate(); showThinking(false); setProcessing(false); state.currentMsg = null; state.thinkMsg = null; state.fullAccumulator = ''; }
     else if (d.level === 'info' || d.level === 'warn') addMsg('system', d.message);
   });
 
@@ -314,7 +405,8 @@ function connect() {
     const d = JSON.parse(e.data);
     const data = typeof d.data === 'string' ? d.data : JSON.stringify(d.data, null, 2);
     const tag = d.agentName && d.agentName !== 'main' ? `[${escapeHtml(d.agentName)}] ` : '';
-    addMsg('system', '[debug] ' + tag + escapeHtml(data));
+    const el = addMsg('debug', '');
+    el.innerHTML = '<span class="debug-label">[debug]</span> ' + tag + escapeHtml(data);
   });
 
   es.addEventListener('agent:turn_start', (e) => {
@@ -434,6 +526,8 @@ function connect() {
     const d = JSON.parse(e.data);
     renderImmediate();
     state.currentMsg = null;
+    state.thinkMsg = null;
+    state.fullAccumulator = '';
     addMsg('user', escapeHtml(d.text));
   });
 

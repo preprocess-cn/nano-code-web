@@ -1,6 +1,6 @@
 {
   "name": "@preprocess-cn/nano-code-web",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Web-based display plugin for nano-code",
   "type": "module",
   "main": "dist/display.js",

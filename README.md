@@ -1,6 +1,6 @@
 # nano-code-web
 
-nano-code 的 Web 显示插件（v0.1.2）。通过 SSE（Server-Sent Events）将 nano-code 的 DisplayPlugin 事件推送到浏览器前端，提供图形化交互界面。
+nano-code 的 Web 显示插件（v0.1.3）。通过 SSE（Server-Sent Events）将 nano-code 的 DisplayPlugin 事件推送到浏览器前端，提供图形化交互界面。
 
 ## Architecture
 
@@ -27,6 +27,8 @@ nano-code 核心 → DisplayPlugin 事件 → display.ts → SSE → public/inde
    - 通过 NanoPlugin `onBeforeToolCall/onAfterToolCall` 追踪工具调用 ID
 
 3. **`public/index.html`** + **`public/app.js`** + **`public/dialog.js`** + **`public/style.css`** — 单页前端（v0.1.2 将 CSS/JS 从内联提取为独立文件）
+   - **思考内容独立样式**（`.msg.think`）— 灰色斜体、左侧淡灰边框，视觉区分思考过程与回答
+   - **调试消息独立样式**（`.msg.debug`）— 等宽字体、虚线边框，与系统消息样式分离
    - Markdown 渲染（`markdown-it` + `highlight.js` 语法高亮 + `DOMPurify` 安全消毒）
    - 流式输出优化：debounce（150ms）+ 代码块闭合检测（``` 成对时立即渲染）
    - 工具卡片点击展开/收拢（参数 + 返回结果）
@@ -96,12 +98,12 @@ nano-code 通过 `session:start` 事件的 `config` 对象传递配置：
 | `session:start` | 后端 → 前端 | 新会话开始，包含配置 |
 | `session:ready` | 后端 → 前端 | 等待用户输入 |
 | `session:stop` | 后端 → 前端 | 会话结束 |
-| `stream:chunk` | 后端 → 前端 | LLM 文本输出流 |
+| `stream:chunk` | 后端 → 前端 | LLM 文本输出流；`showThink=true` 时前端解析 `<think>` 标签并分离为独立样式 |
 | `tool:call` | 后端 → 前端 | 工具调用（显示工具卡片） |
 | `tool:result` | 后端 → 前端 | 工具调用结果（更新卡片状态） |
 | `status` | 后端 → 前端 | 状态更新（thinking/end/信息） |
 | `error` | 后端 → 前端 | 错误信息 |
-| `debug` | 后端 → 前端 | 调试信息 |
+| `debug` | 后端 → 前端 | 调试信息（`.msg.debug` 等宽虚线边框样式） |
 | `agent:turn_start` | 后端 → 前端 | Agent 轮次开始 |
 | `agent:turn_end` | 后端 → 前端 | Agent 轮次结束 |
 | `confirmation:request` | 后端 → 前端 | 授权确认请求（Allow/Deny） |
