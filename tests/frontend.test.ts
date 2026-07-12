@@ -216,10 +216,10 @@ describe('前端渲染测试', { concurrency: false }, () => {
     });
     await p.waitForTimeout(200);
 
-    const sysMsg = p.locator('.msg.system');
-    const text = await sysMsg.textContent();
-    assert.ok(text?.includes('[debug]'), `system 消息应包含 [debug], 实际: ${text}`);
-    assert.ok(text?.includes('这是调试信息'), `system 消息应显示调试内容, 实际: ${text}`);
+    const msg = p.locator('.msg.debug');
+    const text = await msg.textContent();
+    assert.ok(text?.includes('[debug]'), `debug 消息应包含 [debug], 实际: ${text}`);
+    assert.ok(text?.includes('这是调试信息'), `debug 消息应显示调试内容, 实际: ${text}`);
   });
 
   it('debug:false 时隐藏 debug 事件', async () => {

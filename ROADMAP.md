@@ -15,6 +15,18 @@
   - `.msg.debug` 等宽字体、虚线边框，与 `.msg.system` 样式分离
   - `[debug]` 标签加粗标识，便于快速定位
 
+### 修复
+
+- **补充 DisplayPlugin 中遗漏的事件处理器**
+  - `prompt()` 增加 `cleanupPrompt()` 调用，确保重复调用时清理旧状态
+  - `onNotify` 广播 `notify`/`notify:clear` 事件至 SSE
+  - `onContextAnalysis` 广播上下文分析数据至 SSE
+
+### 测试
+
+- **更新 debug 测试选择器 `.msg.system` → `.msg.debug`**
+  - debug 消息样式已从 system 类改为独立的 debug 类，同步修正前端集成测试定位器
+
 ## v0.1.2
 
 ### 新增功能
