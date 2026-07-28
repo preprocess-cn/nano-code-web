@@ -113,7 +113,11 @@ function isSensitiveFile(filePath: string): boolean {
 // ── 工厂函数：创建 DisplayPlugin 实例 ──
 
 function createWebDisplay() {
-  const server = new NanoCodeWebServer();
+  const envPort = process.env.NANO_CODE_WEB_PORT;
+  const envHost = process.env.NANO_CODE_WEB_HOST;
+  const port = envPort ? parseInt(envPort, 10) || undefined : undefined;
+  const host = envHost || undefined;
+  const server = new NanoCodeWebServer({ port, host });
   let promptResolve: ((text: string | null) => void) | null = null;
   let registry: any = null;
   let agentName = 'main';
