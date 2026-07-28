@@ -1,8 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ThinkFilter, ToolCallBroadcaster } from '../src/display.js';
 import { NanoCodeWebServer } from '../src/server.js';
+
+/** 创建使用独立临时目录的服务器，避免并发测试间 fileDir 冲突 */
+function createIsolatedServer() {
+  const fileDir = mkdtempSync(join(tmpdir(), 'nano-code-web-test-'));
+  return new NanoCodeWebServer({ port: 0, host: '127.0.0.1', fileDir });
+}
 
 /** 连接 SSE，返回事件收集数组 */
 async function collectSSE(url: string): Promise<{ events: Array<{ type: string; data: string }>; close: () => void }> {
@@ -173,7 +182,7 @@ function connectSSE(url: string, waitMs = 200): Promise<{ events: Array<{ type: 
 describe('SSE 事件重放', { concurrency: true }, () => {
   /** 创建带环形缓冲区和重放逻辑的服务器（模拟 display.ts 的 onConnect 行为） */
   function createReplayServer() {
-    const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
+    const server = createIsolatedServer();
     const MAX = 500;
     const ring: Array<{ type: string; data: Record<string, unknown> }> = new Array(MAX);
     let head = 0, count = 0;
