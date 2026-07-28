@@ -65,6 +65,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 创建 GitHub Release
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            echo "- 首次发布"
+          else
+            git log --pretty=format:"- %s" "$PREV_TAG"..HEAD
+          fi | gh release create "$GITHUB_REF_NAME" --notes-file -
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
