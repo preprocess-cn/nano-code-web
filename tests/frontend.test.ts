@@ -257,4 +257,79 @@ describe('前端渲染测试', { concurrency: false }, () => {
     assert.ok(await userMsg.isVisible(), '用户消息气泡应可见');
     assert.ok((await userMsg.textContent())?.includes('测试用户消息'), '消息内容应正确');
   });
+
+  it('同 turn 重写文件时旧下载按钮标记为 stale', async () => {
+    const p = await newPage();
+
+    // 第一次写入
+    server.broadcast('tool:call', {
+      id: 'call_dl_1', toolName: 'write_file_content',
+      args: { path: '/tmp/test.py' }, agentName: 'main',
+    });
+    await p.waitForTimeout(30);
+    server.broadcast('file:changed', {
+      filePath: '/tmp/test.py', toolName: 'write_file_content',
+      agentName: 'main', toolCallId: 'call_dl_1',
+    });
+    await p.waitForTimeout(100);
+
+    const btns = p.locator('.tool-dl-btn');
+    assert.equal(await btns.count(), 1, '第一次写入后应有 1 个下载按钮');
+    assert.ok(!await btns.first().evaluate(el => el.classList.contains('stale')), '第一个按钮不应是 stale');
+
+    // 第二次写入同一文件（同 turn）
+    server.broadcast('tool:call', {
+      id: 'call_dl_2', toolName: 'write_file_content',
+      args: { path: '/tmp/test.py' }, agentName: 'main',
+    });
+    await p.waitForTimeout(30);
+    server.broadcast('file:changed', {
+      filePath: '/tmp/test.py', toolName: 'write_file_content',
+      agentName: 'main', toolCallId: 'call_dl_2',
+    });
+    await p.waitForTimeout(100);
+
+    assert.equal(await btns.count(), 2, '重写后应有 2 个下载按钮');
+    const classes = await btns.evaluateAll(els => els.map(el => [...el.classList]));
+    assert.ok(classes[0].includes('stale'), '第一个按钮应标记为 stale');
+    assert.ok(!classes[1].includes('stale'), '第二个按钮不应是 stale');
+  });
+
+  it('跨 agent turn 重写文件时旧按钮也标记为 stale', async () => {
+    const p = await newPage();
+
+    // Turn 1: 写入文件
+    server.broadcast('tool:call', {
+      id: 'call_dl_3', toolName: 'write_file_content',
+      args: { path: '/tmp/shared.py' }, agentName: 'main',
+    });
+    await p.waitForTimeout(30);
+    server.broadcast('file:changed', {
+      filePath: '/tmp/shared.py', toolName: 'write_file_content',
+      agentName: 'main', toolCallId: 'call_dl_3',
+    });
+    await p.waitForTimeout(50);
+
+    // Turn 1 结束（清空 activeDownloads）
+    server.broadcast('agent:turn_end', { agentName: 'main' });
+    await p.waitForTimeout(50);
+
+    // Turn 2: 再次写入同一文件
+    server.broadcast('tool:call', {
+      id: 'call_dl_4', toolName: 'patch_file',
+      args: { path: '/tmp/shared.py' }, agentName: 'main',
+    });
+    await p.waitForTimeout(30);
+    server.broadcast('file:changed', {
+      filePath: '/tmp/shared.py', toolName: 'patch_file',
+      agentName: 'main', toolCallId: 'call_dl_4',
+    });
+    await p.waitForTimeout(100);
+
+    const btns = p.locator('.tool-dl-btn');
+    assert.equal(await btns.count(), 2, '跨 turn 后应有 2 个下载按钮');
+    const classes = await btns.evaluateAll(els => els.map(el => [...el.classList]));
+    assert.ok(classes[0].includes('stale'), 'turn 1 的按钮应标记为 stale');
+    assert.ok(!classes[1].includes('stale'), 'turn 2 的按钮不应是 stale');
+  });
 });

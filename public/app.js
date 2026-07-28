@@ -424,7 +424,7 @@ function connect() {
     renderImmediate();
     state.currentMsg = null;
     if (activeDownloads.size > 0) renderDownloadBar();
-    activeDownloads = new Map();
+    // 不清空 activeDownloads——保留 DOM 元素引用供后续 file:changed 跨 turn 标记过期
   });
 
   es.addEventListener('confirmation:request', (e) => {

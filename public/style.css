@@ -243,7 +243,7 @@ header h1 { font-size: 15px; font-weight: 600; color: var(--text); letter-spacin
 .file-chip-remove:hover { color: var(--error); }
 
 /* ── 下载按钮/栏 ── */
-.download-bar { align-self: flex-start; width: 100%; max-width: 640px; margin-top: 4px; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--success); background: var(--surface); overflow: hidden; }
+.download-bar { align-self: flex-start; width: 100%; max-width: 640px; margin-top: 4px; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--success); background: var(--surface); overflow: hidden; flex-shrink: 0; }
 .download-bar-header { padding: 6px 12px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); }
 .download-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px; }
 .download-item.inline { align-self: flex-start; width: 100%; max-width: 640px; margin: 4px 0; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid var(--success); background: var(--surface); padding: 8px 12px; }
