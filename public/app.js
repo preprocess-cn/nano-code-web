@@ -257,7 +257,7 @@ function connect() {
     $('status-bar').innerHTML = '';
     $('status-bar').classList.remove('show');
     clearAttachments();
-    pendingDownloads = [];
+    activeDownloads = new Map();
   });
 
   es.addEventListener('session:ready', () => {
@@ -423,9 +423,8 @@ function connect() {
   es.addEventListener('agent:turn_end', () => {
     renderImmediate();
     state.currentMsg = null;
-    // 汇总显示本轮所有修改文件
-    if (pendingDownloads.length > 0) renderDownloadBar();
-    pendingDownloads = [];
+    if (activeDownloads.size > 0) renderDownloadBar();
+    activeDownloads = new Map();
   });
 
   es.addEventListener('confirmation:request', (e) => {
@@ -553,7 +552,55 @@ function connect() {
 
   es.addEventListener('file:changed', (e) => {
     const d = JSON.parse(e.data);
-    pendingDownloads.push(d);
+
+    // 如果该文件之前已有下载按钮，变灰标记为过期
+    const prev = activeDownloads.get(d.filePath);
+    if (prev) {
+      prev.element.classList.add('stale');
+    }
+
+    // 在工具卡片头部放置下载按钮
+    const encoded = encodeURIComponent(d.filePath);
+    const toolCard = d.toolCallId ? state.toolCards.get(d.toolCallId) : null;
+    let el;
+
+    if (toolCard) {
+      const statusEl = toolCard.querySelector('.tool-status');
+      if (statusEl) {
+        const link = document.createElement('a');
+        link.className = 'tool-dl-btn';
+        link.href = `/download?path=${encoded}`;
+        link.download = '';
+        link.title = 'Download ' + d.filePath;
+        link.innerHTML = '⬇';
+        statusEl.parentNode?.insertBefore(link, statusEl.nextSibling);
+        el = link;
+      } else {
+        // 没有 status 元素时在 header 末尾追加
+        const header = toolCard.querySelector('.tool-card-header');
+        if (header) {
+          const link = document.createElement('a');
+          link.className = 'tool-dl-btn';
+          link.href = `/download?path=${encoded}`;
+          link.download = '';
+          link.innerHTML = '⬇';
+          header.appendChild(link);
+          el = link;
+        }
+      }
+    }
+
+    // 无论是否找到卡片，都在消息区生成一个下载行（汇总用）
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'download-item';
+      el.style.cssText = 'align-self:flex-start;width:100%;max-width:640px;margin:4px 0;border-radius:8px;border:1px solid var(--border);border-left:3px solid var(--success);background:var(--surface);padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:13px;';
+      el.innerHTML = `<span style="flex:1;color:var(--text-dim);font-family:ui-monospace,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.filePath)}</span><a class="download-btn" href="/download?path=${encoded}" download>⬇ Download</a>`;
+      msgArea.appendChild(el);
+    }
+    scrollBottom();
+
+    activeDownloads.set(d.filePath, { element: el, data: d });
   });
 
   es.onerror = () => { setStatus('disconnected', 'Reconnecting...'); state.connected = false; setInputEnabled(false, false); };
@@ -682,21 +729,19 @@ inputEl.addEventListener('paste', (e) => {
   if (files && files.length > 0) { e.preventDefault(); handleFiles(files); }
 });
 
-// ── 文件下载相关 ──
-
-// 存放 file:changed 事件，供 agent:turn_end 汇总展示
-let pendingDownloads = [];
+// 文件下载追踪: filePath → { element, data }
+let activeDownloads = new Map();
 
 function renderDownloadBar() {
-  // 移除旧的下载栏
+  // 移除旧汇总栏
   document.querySelectorAll('.download-bar').forEach(el => el.remove());
-  if (pendingDownloads.length === 0) return;
+  if (activeDownloads.size === 0) return;
   const bar = document.createElement('div');
   bar.className = 'download-bar';
   let html = '<div class="download-bar-header">Modified files</div>';
-  for (const d of pendingDownloads) {
-    const encoded = encodeURIComponent(d.filePath);
-    html += `<div class="download-item"><span class="download-item-name">${escapeHtml(d.filePath)}</span><a class="download-btn" href="/download?path=${encoded}" download>⬇ Download</a></div>`;
+  for (const [filePath, entry] of activeDownloads) {
+    const encoded = encodeURIComponent(filePath);
+    html += `<div class="download-item"><span class="download-item-name">${escapeHtml(filePath)}</span><a class="download-btn" href="/download?path=${encoded}" download>⬇ Download</a></div>`;
   }
   bar.innerHTML = html;
   msgArea.appendChild(bar);

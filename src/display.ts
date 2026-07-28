@@ -282,6 +282,7 @@ function createWebDisplay() {
                   filePath: tracked.filePath,
                   toolName: tracked.toolName,
                   agentName,
+                  toolCallId: currentToolId,
                 });
               }
               toolCallArgs.delete(currentToolId);
