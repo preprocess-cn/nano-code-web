@@ -1,5 +1,5 @@
 // ── State ──
-const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false, toolDefinitions: [], thinkMsg: null, fullAccumulator: '' };
+const state = { currentMsg: null, currentRawText: '', renderTimer: null, toolCards: new Map(), connected: false, es: null, showThink: false, debug: false, toolDefinitions: [], thinkMsg: null, fullAccumulator: '', uploadedFiles: [] };
 
 const $ = id => document.getElementById(id);
 const msgArea = $('messages');
@@ -10,6 +10,9 @@ const cancelBtn = $('cancel-btn');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
 const thinkingEl = $('thinking');
+const uploadBtn = $('upload-btn');
+const fileInput = $('file-input');
+const fileAttachments = $('file-attachments');
 // Toast 通知容器（浮动在页面右上角）
 const toastContainer = document.createElement('div');
 toastContainer.id = 'toast-container';
@@ -214,6 +217,7 @@ syncChannel.onmessage = (e) => {
 function setInputEnabled(en, broadcast = true) {
   inputEl.disabled = !en;
   sendBtn.disabled = !en;
+  if (uploadBtn) uploadBtn.disabled = !en;
   if (en && broadcast) setTimeout(() => inputEl.focus(), 100);
   if (broadcast) syncChannel.postMessage({ type: 'inputEnabled', enabled: en });
 }
@@ -252,6 +256,8 @@ function connect() {
     $('bg-tasks').classList.remove('show');
     $('status-bar').innerHTML = '';
     $('status-bar').classList.remove('show');
+    clearAttachments();
+    pendingDownloads = [];
   });
 
   es.addEventListener('session:ready', () => {
@@ -414,7 +420,13 @@ function connect() {
     if (d.agentName !== 'main') addMsg('agent-badge', '&#9881; Agent: ' + escapeHtml(d.agentName));
   });
 
-  es.addEventListener('agent:turn_end', () => { renderImmediate(); state.currentMsg = null; });
+  es.addEventListener('agent:turn_end', () => {
+    renderImmediate();
+    state.currentMsg = null;
+    // 汇总显示本轮所有修改文件
+    if (pendingDownloads.length > 0) renderDownloadBar();
+    pendingDownloads = [];
+  });
 
   es.addEventListener('confirmation:request', (e) => {
     const d = JSON.parse(e.data);
@@ -531,18 +543,42 @@ function connect() {
     addMsg('user', escapeHtml(d.text));
   });
 
+  es.addEventListener('file:uploaded', (e) => {
+    const d = JSON.parse(e.data);
+    if (!state.uploadedFiles.find(f => f.id === d.id)) {
+      state.uploadedFiles.push({ id: d.id, name: d.name, size: d.size });
+      renderAttachments();
+    }
+  });
+
+  es.addEventListener('file:changed', (e) => {
+    const d = JSON.parse(e.data);
+    pendingDownloads.push(d);
+  });
+
   es.onerror = () => { setStatus('disconnected', 'Reconnecting...'); state.connected = false; setInputEnabled(false, false); };
   es.onopen = () => { setStatus('connected', 'Connected'); state.connected = true; };
 }
 
 async function sendInput() {
   const text = inputEl.value;
-  if (!text.trim()) return;
+  if (!text.trim() && state.uploadedFiles.length === 0) return;
   inputEl.value = '';
   setInputEnabled(false);
   state.currentMsg = null;
+
+  // 如有附件，使用 input-with-files 端点
+  const fileIds = state.uploadedFiles.map(f => f.id);
+  const endpoint = fileIds.length > 0 ? '/input-with-files' : '/input';
+  const body = fileIds.length > 0
+    ? JSON.stringify({ text: text.trim(), fileIds })
+    : JSON.stringify({ text: text.trim() });
+
+  // 清除附件（已发送）
+  if (fileIds.length > 0) clearAttachments();
+
   try {
-    const r = await fetch('/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text.trim() }) });
+    const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
     if (!r.ok) throw new Error('HTTP ' + r.status);
   } catch (err) {
     addMsg('user', escapeHtml(text.trim()));
@@ -557,6 +593,114 @@ async function sendConfirm(id, approved) {
   try { await fetch('/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, approved }) }); } catch {}
   const card = document.querySelector(`.confirm-card[data-confirm-id="${id}"]`);
   if (card) card.remove();
+}
+
+// ── 文件上传 ──
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+}
+
+async function handleFiles(files) {
+  const MAX_SIZE = 50 * 1024 * 1024;
+  const validFiles = [];
+  for (const file of files) {
+    if (file.size > MAX_SIZE) {
+      showToast(file.name + ': File too large (max 50MB)');
+    } else {
+      validFiles.push(file);
+    }
+  }
+  if (validFiles.length === 0) return;
+  const fd = new FormData();
+  for (const file of validFiles) fd.append('files', file);
+  try {
+    const r = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!data.ok) { showToast('Upload failed: ' + (data.error || 'unknown')); return; }
+    // 不处理 data.files——由 SSE file:uploaded 统一添加，确保多 tab 同步
+    if (data.files?.length === 1) {
+      showToast('Uploaded: ' + data.files[0].name);
+    } else if (data.files?.length > 1) {
+      showToast('Uploaded ' + data.files.length + ' files');
+    }
+  } catch (err) {
+    showToast('Upload error: ' + err.message);
+  }
+}
+
+function renderAttachments() {
+  fileAttachments.innerHTML = '';
+  for (const f of state.uploadedFiles) {
+    const chip = document.createElement('span');
+    chip.className = 'file-chip';
+    chip.dataset.fileId = f.id;
+    chip.innerHTML = `<span class="file-chip-name">${escapeHtml(f.name)}</span><span class="file-chip-size">${formatSize(f.size)}</span><span class="file-chip-remove" data-id="${f.id}">✕</span>`;
+    chip.querySelector('.file-chip-remove').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeAttachment(f.id);
+    });
+    fileAttachments.appendChild(chip);
+  }
+  fileAttachments.classList.toggle('show', state.uploadedFiles.length > 0);
+}
+
+function removeAttachment(id) {
+  state.uploadedFiles = state.uploadedFiles.filter(f => f.id !== id);
+  renderAttachments();
+}
+
+function clearAttachments() {
+  state.uploadedFiles = [];
+  fileAttachments.innerHTML = '';
+  fileAttachments.classList.remove('show');
+}
+
+// 上传按钮
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length > 0) handleFiles(fileInput.files);
+  fileInput.value = '';
+});
+
+// 拖放上传
+const inputArea = $('input-area');
+inputArea.addEventListener('dragover', (e) => { e.preventDefault(); inputArea.classList.add('drag-over'); });
+inputArea.addEventListener('dragleave', () => { inputArea.classList.remove('drag-over'); });
+inputArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  inputArea.classList.remove('drag-over');
+  if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+});
+
+// Ctrl+V 粘贴文件
+inputEl.addEventListener('paste', (e) => {
+  const files = e.clipboardData?.files;
+  if (files && files.length > 0) { e.preventDefault(); handleFiles(files); }
+});
+
+// ── 文件下载相关 ──
+
+// 存放 file:changed 事件，供 agent:turn_end 汇总展示
+let pendingDownloads = [];
+
+function renderDownloadBar() {
+  // 移除旧的下载栏
+  document.querySelectorAll('.download-bar').forEach(el => el.remove());
+  if (pendingDownloads.length === 0) return;
+  const bar = document.createElement('div');
+  bar.className = 'download-bar';
+  let html = '<div class="download-bar-header">Modified files</div>';
+  for (const d of pendingDownloads) {
+    const encoded = encodeURIComponent(d.filePath);
+    html += `<div class="download-item"><span class="download-item-name">${escapeHtml(d.filePath)}</span><a class="download-btn" href="/download?path=${encoded}" download>⬇ Download</a></div>`;
+  }
+  bar.innerHTML = html;
+  msgArea.appendChild(bar);
+  scrollBottom();
 }
 
 inputEl.addEventListener('keydown', (e) => {

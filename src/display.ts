@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { NanoCodeWebServer } from './server.js';
 import { getToolDisplayName, getToolArgsPreview, type ToolDef } from './tool-display.js';
 
@@ -97,6 +98,18 @@ const agentAbortKey = (name: string) => `agent:abort:${name}`;
 const SK_MODE = 'task-plan:mode';
 const SK_PRE_MODE = 'task-plan:preMode';
 
+// ── 敏感文件检测（禁止下载隐藏文件/系统文件）──
+
+function isSensitiveFile(filePath: string): boolean {
+  const base = path.basename(filePath);
+  if (base.startsWith('.')) return true;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (normalized.includes('/.git/')) return true;
+  if (normalized.includes('/node_modules/')) return true;
+  if (normalized.includes('/.nano-code')) return true;
+  return false;
+}
+
 // ── 工厂函数：创建 DisplayPlugin 实例 ──
 
 function createWebDisplay() {
@@ -117,6 +130,10 @@ function createWebDisplay() {
   // 工具调用 ID 追踪（串行场景下完全正确）
   let currentToolId: string | null = null;
   let currentToolName: string | null = null;
+
+  // 写文件工具参数追踪（用于下载触发）
+  const toolCallArgs = new Map<string, { filePath: string; toolName: string }>();
+
   let showThink = false;
   const thinkFilter = new ThinkFilter();
   const toolCallBc = new ToolCallBroadcaster();
@@ -237,6 +254,14 @@ function createWebDisplay() {
           let args: any;
           try { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch { args = {}; }
 
+          // 追踪写文件工具的文件路径，用于 onAfterToolCall 中触发下载
+          if (currentToolName && toolCall.id && args.path) {
+            const writeTools = ['write_file_content', 'patch_file'];
+            if (writeTools.includes(currentToolName)) {
+              toolCallArgs.set(toolCall.id, { filePath: args.path, toolName: currentToolName });
+            }
+          }
+
           // 将 displayName 和 argsPreview 附加到广播中
           const displayName = getToolDisplayName(currentToolName ?? 'unknown', schemas);
           const argsPreview = getToolArgsPreview(args);
@@ -248,6 +273,22 @@ function createWebDisplay() {
         onAfterToolCall(result: any): any {
           if (currentToolId) {
             toolCallBc.broadcastResult(server, currentToolId, currentToolName, result.status, result.message, agentName);
+
+            // 写文件工具成功 → 广播 file:changed 供前端下载
+            if (result.status === 'success') {
+              const tracked = toolCallArgs.get(currentToolId);
+              if (tracked && !isSensitiveFile(tracked.filePath)) {
+                server.broadcast('file:changed', {
+                  filePath: tracked.filePath,
+                  toolName: tracked.toolName,
+                  agentName,
+                });
+              }
+              toolCallArgs.delete(currentToolId);
+            } else {
+              toolCallArgs.delete(currentToolId);
+            }
+
             currentToolId = null;
             // 保留 currentToolName — DisplayPlugin.onToolResult 仍可能引用
           }

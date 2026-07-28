@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
+import { Readable } from 'node:stream';
+import Busboy from 'busboy';
 
 export type InputCallback = (text: string) => void;
 export type CancelCallback = () => void;
@@ -113,6 +115,9 @@ export class NanoCodeWebServer {
         if (req.method === 'POST' && sUrl.pathname === '/question-answer') return this.handleQuestionAnswer(req, res);
         if (req.method === 'POST' && sUrl.pathname === '/mode-toggle') return this.handleModeToggle(req, res);
         if (req.method === 'GET' && sUrl.pathname === '/health') return this.handleHealth(res);
+        if (req.method === 'POST' && sUrl.pathname === '/upload') return this.handleUpload(req, res);
+        if (req.method === 'GET' && sUrl.pathname === '/download') return this.handleDownload(req, res, sUrl);
+        if (req.method === 'POST' && sUrl.pathname === '/input-with-files') return this.handleInputWithFiles(req, res);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/web-files/')) return this.handleFile(req, res, sUrl.pathname);
         if (req.method === 'GET' && sUrl.pathname.startsWith('/vendor/')) return this.handleVendor(res, sUrl.pathname);
         // 通用静态文件: 在 public/ 或 dist/ 下查找，存在即返回，否则走 index.html
@@ -280,6 +285,182 @@ export class NanoCodeWebServer {
     res.end(content);
   }
 
+  // ── 文件上传（multipart/form-data）──
+
+  private handleUpload(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const MAX_SIZE = 50 * 1024 * 1024;
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: MAX_SIZE, files: 20 } });
+    const uploadDir = path.join(this.fileDir, 'uploads');
+    const results: { id: string; name: string; size: number }[] = [];
+    let abortedBySize = false;
+    let pendingWrites = 0;
+    let bbFinished = false;
+    let finished = false;
+
+    const tryFinish = () => {
+      if (finished) return;
+      if (!bbFinished || pendingWrites > 0) return;
+      finished = true;
+      if (abortedBySize) {
+        res.writeHead(413, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: false, error: 'File too large, max 50MB' }));
+        return;
+      }
+      for (const f of results) {
+        this.broadcast('file:uploaded', { id: f.id, name: f.name, size: f.size });
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, files: results }));
+    };
+
+    bb.on('file', (_fieldname: string, stream: Readable, info: { filename: string }) => {
+      const safeName = path.basename(info.filename).replace(/[/\\]/g, '_');
+      if (!safeName) { stream.resume(); return; }
+      const id = crypto.randomUUID();
+      const destDir = path.join(uploadDir, id);
+      fs.mkdirSync(destDir, { recursive: true });
+      const filePath = path.join(destDir, safeName);
+      const ws = fs.createWriteStream(filePath);
+      pendingWrites++;
+      stream.pipe(ws);
+      ws.on('finish', () => {
+        let size = 0;
+        try { size = fs.statSync(filePath).size; } catch { /* ignore */ }
+        results.push({ id, name: safeName, size });
+        pendingWrites--;
+        tryFinish();
+      });
+      stream.on('limit', () => {
+        abortedBySize = true;
+        stream.destroy();
+        ws.end();  // 触发 ws.on('finish') → pendingWrites--，这里不再重复递减
+        try { fs.rmSync(destDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      });
+    });
+
+    bb.on('finish', () => {
+      bbFinished = true;
+      tryFinish();
+    });
+
+    bb.on('error', () => {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: false, error: 'Upload failed' }));
+    });
+
+    req.pipe(bb);
+  }
+
+  // ── 文件下载（从本地文件系统）──
+
+  private handleDownload(_req: http.IncomingMessage, res: http.ServerResponse, url: URL): void {
+    const filePath = url.searchParams.get('path');
+    if (!filePath) {
+      res.writeHead(400); res.end('Missing path');
+      return;
+    }
+
+    // 安全：禁止目录遍历
+    if (filePath.includes('..')) {
+      res.writeHead(403); res.end('Forbidden');
+      return;
+    }
+    const resolved = path.resolve(filePath);
+    const cwd = process.cwd() + path.sep;
+    if (resolved !== process.cwd() && !resolved.startsWith(cwd)) {
+      res.writeHead(403); res.end('Forbidden');
+      return;
+    }
+    // 安全：禁止隐藏文件
+    const base = path.basename(resolved);
+    if (base.startsWith('.')) {
+      res.writeHead(403); res.end('Forbidden');
+      return;
+    }
+    // 安全：禁止敏感路径
+    const normalized = resolved.replace(/\\/g, '/');
+    if (normalized.includes('/.git/') || normalized.includes('/node_modules/') || normalized.includes('/.nano-code')) {
+      res.writeHead(403); res.end('Forbidden');
+      return;
+    }
+
+    try {
+      const stat = fs.statSync(resolved);
+      if (!stat.isFile()) {
+        res.writeHead(404); res.end('Not Found');
+        return;
+      }
+      const ext = path.extname(base);
+      const mimeTypes: Record<string, string> = {
+        '.js': 'application/javascript', '.ts': 'application/typescript',
+        '.json': 'application/json', '.html': 'text/html',
+        '.css': 'text/css', '.md': 'text/markdown',
+        '.py': 'text/x-python', '.go': 'text/x-go',
+        '.rs': 'text/x-rust', '.yaml': 'text/yaml',
+        '.yml': 'text/yaml', '.xml': 'application/xml',
+        '.sh': 'text/x-shellscript', '.txt': 'text/plain',
+      };
+      res.writeHead(200, {
+        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${base.replace(/"/g, '\\"')}"`,
+        'Content-Length': stat.size,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache',
+      });
+      fs.createReadStream(resolved).pipe(res);
+    } catch {
+      res.writeHead(404); res.end('Not Found');
+    }
+  }
+
+  // ── 带附件的用户输入 ──
+
+  private handleInputWithFiles(req: http.IncomingMessage, res: http.ServerResponse): void {
+    let body = '';
+    req.on('data', (chunk: string) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        const text = typeof parsed?.text === 'string' ? parsed.text : '';
+        const fileIds: string[] = Array.isArray(parsed?.fileIds) ? parsed.fileIds : [];
+
+        let enriched = text;
+        if (fileIds.length > 0) {
+          const uploadDir = path.join(this.fileDir, 'uploads');
+          let extra = '\n\n---\n';
+          for (const id of fileIds) {
+            // 安全：验证 UUID 格式，防止路径遍历
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) continue;
+            const dir = path.join(uploadDir, id);
+            try {
+              const files = fs.readdirSync(dir);
+              for (const f of files) {
+                const filePath = path.join(dir, f);
+                // 限制单个附件 1MB
+                let stat;
+                try { stat = fs.statSync(filePath); } catch { continue; }
+                if (stat.size > 1024 * 1024) {
+                  extra += `**附件: ${f}** (file too large: ${stat.size}B, skipped)\n\n`;
+                  continue;
+                }
+                const content = fs.readFileSync(filePath, 'utf-8');
+                const ext = path.extname(f).slice(1);
+                extra += `**附件: ${f}**\n\`\`\`${ext}\n${content}\n\`\`\`\n\n`;
+              }
+            } catch { /* 跳过已删除的文件 */ }
+          }
+          enriched = text + extra;
+        }
+
+        if (enriched.trim() && this.inputCb) this.inputCb(enriched);
+      } catch {
+        if (body.trim() && this.inputCb) this.inputCb(body.trim());
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  }
+
   private resolvePublicFile(pathname: string): string | null {
     const fileName = pathname.replace(/^\//, '');
     if (!fileName) return null;
@@ -312,7 +493,7 @@ export class NanoCodeWebServer {
     res.writeHead(200, {
       'Content-Type': mime[ext] || 'application/octet-stream',
       'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'no-cache',
     });
     fs.createReadStream(filePath).pipe(res);
   }

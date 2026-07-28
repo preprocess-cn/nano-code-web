@@ -53,8 +53,13 @@
 </div>
 
 <div id="input-area">
-  <textarea id="input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" disabled></textarea>
-  <button id="send-btn" disabled onclick="sendInput()">Send</button>
+  <div id="file-attachments"></div>
+  <div class="input-row">
+    <textarea id="input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)" disabled></textarea>
+    <button id="upload-btn" title="Upload files" disabled>📎</button>
+    <button id="send-btn" disabled onclick="sendInput()">Send</button>
+  </div>
+  <input type="file" id="file-input" multiple hidden>
 </div>
 
 <script src="dialog.js"></script>
