@@ -54,19 +54,13 @@ export class ThinkFilter {
 
 export class ToolCallBroadcaster {
   private bcIds = new Set<string>();
-  private historyCb: ((type: string, data: Record<string, unknown>) => void) | null = null;
-
-  setHistoryCallback(cb: (type: string, data: Record<string, unknown>) => void) {
-    this.historyCb = cb;
-  }
 
   /** 返回是否真正广播了（false = 重复跳过） */
   broadcastCall(server: NanoCodeWebServer, id: string, toolName: string | null, args: unknown, agentName: string, extra?: Record<string, unknown>): boolean {
     if (this.bcIds.has(id)) return false;
     this.bcIds.add(id);
     const data: Record<string, unknown> = { id, toolName, args, agentName, ...extra };
-    server.broadcast('tool:call', data);
-    this.historyCb?.('tool:call', data);
+    server.broadcastRecord('tool:call', data);
     return true;
   }
 
@@ -75,8 +69,7 @@ export class ToolCallBroadcaster {
     if (!this.bcIds.has(id)) return false;
     this.bcIds.delete(id);
     const data: Record<string, unknown> = { id, toolName, status, message, agentName };
-    server.broadcast('tool:result', data);
-    this.historyCb?.('tool:result', data);
+    server.broadcastRecord('tool:result', data);
     return true;
   }
 
@@ -141,7 +134,7 @@ function createWebDisplay() {
   let showThink = false;
   const thinkFilter = new ThinkFilter();
   const toolCallBc = new ToolCallBroadcaster();
-  toolCallBc.setHistoryCallback(pushHistory);
+  server.setRecordCallback(pushHistory);
 
   // 事件历史环形缓冲区（用于前端重连时回放）
   const MAX_EVENT_HISTORY = 500;
@@ -282,12 +275,8 @@ function createWebDisplay() {
             if (result.status === 'success') {
               const tracked = toolCallArgs.get(currentToolId);
               if (tracked && !isSensitiveFile(tracked.filePath)) {
-                server.broadcast('file:changed', {
-                  filePath: tracked.filePath,
-                  toolName: tracked.toolName,
-                  agentName,
-                  toolCallId: currentToolId,
-                });
+                const data = { filePath: tracked.filePath, toolName: tracked.toolName, agentName, toolCallId: currentToolId };
+                server.broadcastRecord('file:changed', data);
               }
               toolCallArgs.delete(currentToolId);
             } else {
@@ -314,8 +303,7 @@ function createWebDisplay() {
             id, toolName: req.toolName, displayName: req.displayName, message: req.message,
             details: req.details, diff: req.diff, filePath: req.filePath, agentName,
           };
-          server.broadcast('confirmation:request', confirmData);
-          pushHistory('confirmation:request', confirmData);
+          server.broadcastRecord('confirmation:request', confirmData);
         });
       });
 
@@ -325,8 +313,7 @@ function createWebDisplay() {
           const r = confirmState.resolve;
           confirmState = null;
           r(approved);
-          server.broadcast('confirmation:resolved', { id });
-          pushHistory('confirmation:resolved', { id });
+          server.broadcastRecord('confirmation:resolved', { id });
         }
       });
 
@@ -338,8 +325,7 @@ function createWebDisplay() {
           questionDialogResolve = (answers: Record<string, string>) => {
             resolve({ status: 'success', data: JSON.stringify({ questions, answers }) });
           };
-          server.broadcast('question:dialog', { id, questions });
-          pushHistory('question:dialog', { id, questions });
+          server.broadcastRecord('question:dialog', { id, questions });
         });
       });
 
@@ -349,8 +335,7 @@ function createWebDisplay() {
           const r = questionDialogResolve;
           questionDialogResolve = null;
           r(answers);
-          server.broadcast('question:resolved', { id });
-          pushHistory('question:resolved', { id });
+          server.broadcastRecord('question:resolved', { id });
         }
       });
 
@@ -461,23 +446,20 @@ function createWebDisplay() {
     onUserInput(_input: string, _sourcePlugin: string): void {
       currentToolId = null;
       currentToolName = null;
-      server.broadcast('user:input', { text: _input, agentName });
-      pushHistory('user:input', { text: _input, agentName });
+      server.broadcastRecord('user:input', { text: _input, agentName });
     },
 
     // ── 显示事件（全部转发为 SSE）──
 
     onStatus(event: any): void {
       const data = { level: event.level, message: event.message, agentName: event.agentName };
-      server.broadcast('status', data);
-      pushHistory('status', data);
+      server.broadcastRecord('status', data);
     },
 
     onStreamChunk(event: any): void {
       const text = thinkFilter.filter(event.text, showThink);
       if (text) {
-        server.broadcast('stream:chunk', { text, agentName: event.agentName });
-        pushHistory('stream:chunk', { text, agentName: event.agentName });
+        server.broadcastRecord('stream:chunk', { text, agentName: event.agentName });
       }
     },
 
@@ -501,8 +483,7 @@ function createWebDisplay() {
 
     onError(event: any): void {
       const data = { message: event.message, stack: event.stack, agentName: event.agentName };
-      server.broadcast('error', data);
-      pushHistory('error', data);
+      server.broadcastRecord('error', data);
     },
 
     onDebug(event: any): void {
@@ -534,14 +515,12 @@ function createWebDisplay() {
 
     onAgentTurnStart(event: any): void {
       const data = { agentName: event.agentName };
-      server.broadcast('agent:turn_start', data);
-      pushHistory('agent:turn_start', data);
+      server.broadcastRecord('agent:turn_start', data);
     },
 
     onAgentTurnEnd(event: any): void {
       const data = { agentName: event.agentName };
-      server.broadcast('agent:turn_end', data);
-      pushHistory('agent:turn_end', data);
+      server.broadcastRecord('agent:turn_end', data);
     },
 
     onStateSnapshot(snapshot: any): void {

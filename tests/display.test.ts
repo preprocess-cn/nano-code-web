@@ -373,11 +373,11 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
     await server.stop();
   });
 
-  it('setHistoryCallback broadcastCall 首次广播时回调被调用', () => {
+  it('setRecordCallback broadcastCall 首次广播时回调被调用', () => {
     const bc = new ToolCallBroadcaster();
     const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
     const calls: Array<{ type: string; data: any }> = [];
-    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+    server.setRecordCallback((type, data) => calls.push({ type, data }));
 
     bc.broadcastCall(server, 'call_1', 'readFile', { path: '.' }, 'main');
 
@@ -387,11 +387,11 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
     server.stop();
   });
 
-  it('setHistoryCallback broadcastCall 重复时不回调', () => {
+  it('setRecordCallback broadcastCall 重复时不回调', () => {
     const bc = new ToolCallBroadcaster();
     const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
     const calls: Array<{ type: string; data: any }> = [];
-    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+    server.setRecordCallback((type, data) => calls.push({ type, data }));
 
     bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
     bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
@@ -400,11 +400,11 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
     server.stop();
   });
 
-  it('setHistoryCallback broadcastResult 对应 ID 存在时回调被调用', () => {
+  it('setRecordCallback broadcastResult 对应 ID 存在时回调被调用', () => {
     const bc = new ToolCallBroadcaster();
     const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
     const calls: Array<{ type: string; data: any }> = [];
-    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+    server.setRecordCallback((type, data) => calls.push({ type, data }));
 
     bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
     bc.broadcastResult(server, 'call_1', 'readFile', 'success', 'ok', 'main');
@@ -416,11 +416,11 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
     server.stop();
   });
 
-  it('setHistoryCallback broadcastResult 对应 ID 不存在时不被调用', () => {
+  it('setRecordCallback broadcastResult 对应 ID 不存在时不被调用', () => {
     const bc = new ToolCallBroadcaster();
     const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
     const calls: Array<{ type: string; data: any }> = [];
-    bc.setHistoryCallback((type, data) => calls.push({ type, data }));
+    server.setRecordCallback((type, data) => calls.push({ type, data }));
 
     bc.broadcastResult(server, 'call_x', 'readFile', 'error', 'not found', 'main');
 
@@ -428,11 +428,11 @@ describe('ToolCallBroadcaster', { concurrency: true }, () => {
     server.stop();
   });
 
-  it('setHistoryCallback 收到正确的 tool:result 数据', () => {
+  it('setRecordCallback 收到正确的 tool:result 数据', () => {
     const bc = new ToolCallBroadcaster();
     const server = new NanoCodeWebServer({ port: 0, host: '127.0.0.1' });
     let captured: any = null;
-    bc.setHistoryCallback((type, data) => { if (type === 'tool:result') captured = data; });
+    server.setRecordCallback((type, data) => { if (type === 'tool:result') captured = data; });
 
     bc.broadcastCall(server, 'call_1', 'readFile', {}, 'main');
     bc.broadcastResult(server, 'call_1', 'readFile', 'error', 'file not found', 'main');

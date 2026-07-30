@@ -31,6 +31,7 @@ export class NanoCodeWebServer {
   private questionAnswerCb: QuestionAnswerCallback | null = null;
   private modeToggleCb: ModeToggleCallback | null = null;
   private connectCb: ConnectCallback | null = null;
+  private recordCb: ((type: string, data: Record<string, unknown>) => void) | null = null;
   /** 实际监听端口（start 后设置） */
   portUsed: number = 0;
 
@@ -48,6 +49,8 @@ export class NanoCodeWebServer {
   onModeToggle(cb: ModeToggleCallback): void { this.modeToggleCb = cb; }
   /** 新 SSE 客户端连入时回调，可发送初始状态 */
   onConnect(cb: ConnectCallback): void { this.connectCb = cb; }
+  /** 注册事件记录回调（用于断线重连回放） */
+  setRecordCallback(cb: (type: string, data: Record<string, unknown>) => void): void { this.recordCb = cb; }
 
   async start(): Promise<number> {
     await fs.promises.mkdir(this.fileDir, { recursive: true });
@@ -84,6 +87,12 @@ export class NanoCodeWebServer {
         this.clients.splice(i, 1);
       }
     }
+  }
+
+  /** 广播并记录事件（断线重连时回放） */
+  broadcastRecord(type: string, data: Record<string, unknown>): void {
+    this.broadcast(type, data);
+    this.recordCb?.(type, data);
   }
 
   /** 写入大内容到临时文件，返回 URL */

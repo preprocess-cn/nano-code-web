@@ -1,6 +1,50 @@
 # ROADMAP
 
-## v0.1.3 — 当前版本
+## v0.1.7 — 当前版本
+
+### 重构
+
+- **`broadcastRecord` 统一接口**
+  - `NanoCodeWebServer` 新增 `broadcastRecord(type, data)` 方法，自动执行 `broadcast` + 历史记录，消除遗漏 `pushHistory` 的风险
+  - `setRecordCallback(cb)` 替代 `ToolCallBroadcaster.setHistoryCallback`，记录职责从 Broadcaster 层上移至 Server 层
+  - 所有 `server.broadcast(...) + pushHistory(...)` 成对调用统一改为 `server.broadcastRecord(...)`
+  - `ToolCallBroadcaster` 精简：移除 `historyCb` 字段和 `setHistoryCallback` 方法
+
+### 修复
+
+- **刷新页面后下载按钮消失**
+  - 根因：`file:changed` 事件只调用了 `server.broadcast()` 而未调用 `pushHistory()`，断线重连回放历史时丢失该事件
+  - 修复：改为 `server.broadcastRecord('file:changed', data)`，确保事件写入历史环形缓冲区
+
+### 测试
+
+- **`ToolCallBroadcaster` 测试适配重构**
+  - 5 个 `setHistoryCallback` 测试用例改为 `setRecordCallback`，验证 Sever 层历史回调机制
+
+## v0.1.6
+
+### 修复
+
+- **测试用独立临时目录避免并发冲突**
+  - `createIsolatedServer()` 使用 `mkdtempSync` 创建独立临时目录，消除并行测试间 `fileDir` 冲突
+
+## v0.1.5
+
+### 修复
+
+- **Release Notes 不再依赖 GitHub API**
+  - `standard-version` 的 `--release-notes` 用 `git log` 生成 Release Notes 替代 `--generate-notes`
+
+## v0.1.4
+
+### 修复
+
+- **跨 turn 重写文件时旧下载按钮标记为 stale**
+  - 同一文件被多次改写时，旧下载按钮变灰，避免用户下载过期版本
+- **汇总栏被 flex 收缩**
+  - `download-bar` 汇总栏添加 `flex-shrink: 0` 防止被 flex 容器压缩
+
+## v0.1.3 — 历史版本
 
 ### 新增功能
 
